@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini PPT Generator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            /* Ensures padding doesn't affect width */
+        }
+
+        button {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>PPT Generator</h1>
+
+        <div id="generateSection">
+            <p>Enter a topic to generate a presentation.</p>
+            <input type="text" id="topicInput" placeholder="e.g., Quantum Computing">
+            <button id="generateBtn" onclick="generatePPT()">Generate PPT</button>
+        </div>
+        <div id="status"></div>
+        <div id="results" style="margin-top: 2rem;"></div>
+    </div>
+
+    <script>
+        async function generatePPT() {
+            const topic = document.getElementById('topicInput').value;
+            const btn = document.getElementById('generateBtn');
+            const status = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+
+            if (!topic) {
+                alert("Please enter a topic");
+                return;
+            }
+
+            // UI State: Loading
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Generating Slides...';
+            status.textContent = "AI is designing your presentation...";
+            if (resultsDiv) resultsDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/generate_ppt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ topic: topic })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    status.textContent = "Presentation Created!";
+
+                    // Display results
+                    const html = `
+                        <div style="margin-top: 20px; padding: 20px; border: 1px solid #d4edda; background-color: #d4edda; color: #155724; border-radius: 5px;">
+                            <h3>Success!</h3>
+                            <p>${data.message}</p>
+                            <a href="${data.downloadUrl}" target="_blank" style="display: inline-block; background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Download PPT</a>
+                        </div>
+                    `;
+
+                    // Ensure results container exists
+                    if (!resultsDiv) {
+                        const newDiv = document.createElement('div');
+                        newDiv.id = 'results';
+                        newDiv.style.marginTop = '2rem';
+                        document.querySelector('.container').appendChild(newDiv);
+                        newDiv.innerHTML = html;
+                    } else {
+                        resultsDiv.innerHTML = html;
+                    }
+
+                } else {
+                    const err = await response.json();
+                    status.textContent = "Error: " + (err.error || "Failed to generate");
+                }
+            } catch (error) {
+                status.textContent = "Network error occurred.";
+                console.error(error);
+            } finally {
+                // UI State: Reset
+                btn.disabled = false;
+                btn.innerText = "Generate PPT";
+            }
+        }
+    </script>
+</body>
+
+</html>
