@@ -15,19 +15,21 @@ def index():
 def generate_ppt():
     data = request.get_json()
     topic = data.get("topic")
+    include_images = data.get("include_images", False)
+    image_mode = data.get("image_mode", "manual")
 
     if not topic:
         return jsonify({"error": "Topic is required"}), 400
 
     try:
         # 1. Get structured content from Gemini
-        json_content = generate_content(topic)
+        json_content = generate_content(topic, include_images=include_images)
         ppt_data = json.loads(json_content)
         
         # 2. Create Presentation Locally
         # Use simple filename sanitization or uuid usually, keeping it simple for now
         filename = f"presentation_{os.urandom(4).hex()}.pptx"
-        output_path = ppt_utils.create_ppt(ppt_data, filename=filename)
+        output_path = ppt_utils.create_ppt(ppt_data, filename=filename, image_mode=image_mode if include_images else None)
 
         # 3. Return the Download URL
         # We need a route to serve this file.

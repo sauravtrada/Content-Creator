@@ -98,6 +98,22 @@
         <div id="generateSection">
             <p>Enter a topic to generate a presentation.</p>
             <input type="text" id="topicInput" placeholder="e.g., Quantum Computing">
+
+            <div style="text-align: left; margin-bottom: 1rem; background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">
+                    <input type="checkbox" id="includeImages" onchange="toggleImageOptions()"> Include Images
+                </label>
+
+                <div id="imageOptions" style="display: none; margin-left: 20px;">
+                    <label style="margin-right: 15px;">
+                        <input type="radio" name="imageMode" value="manual" checked> Manual (Placeholders)
+                    </label>
+                    <label>
+                        <input type="radio" name="imageMode" value="auto"> Automatic (AI Generated)
+                    </label>
+                </div>
+            </div>
+
             <button id="generateBtn" onclick="generatePPT()">Generate PPT</button>
         </div>
         <div id="status"></div>
@@ -105,6 +121,11 @@
     </div>
 
     <script>
+        function toggleImageOptions() {
+            const isChecked = document.getElementById('includeImages').checked;
+            document.getElementById('imageOptions').style.display = isChecked ? 'block' : 'none';
+        }
+
         async function generatePPT() {
             const topic = document.getElementById('topicInput').value;
             const btn = document.getElementById('generateBtn');
@@ -123,12 +144,19 @@
             if (resultsDiv) resultsDiv.innerHTML = '';
 
             try {
+                const includeImages = document.getElementById('includeImages').checked;
+                const imageMode = document.querySelector('input[name="imageMode"]:checked').value;
+
                 const response = await fetch('/generate_ppt', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ topic: topic })
+                    body: JSON.stringify({
+                        topic: topic,
+                        include_images: includeImages,
+                        image_mode: imageMode
+                    })
                 });
 
                 if (response.ok) {
