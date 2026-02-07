@@ -1,5 +1,11 @@
+pydantic
+python-pptx
+requests
 flask
 python-dotenv
 google-genai
+langgraph
+langchain
+langchain-google-genai
 python-pptx
 requests

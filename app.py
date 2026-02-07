@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template, send_file, url_for
-from gemini_client import generate_content
+from agent_graph import graph
 import ppt_utils
 import json
 import os
@@ -22,17 +22,28 @@ def generate_ppt():
         return jsonify({"error": "Topic is required"}), 400
 
     try:
-        # 1. Get structured content from Gemini
-        json_content = generate_content(topic, include_images=include_images)
+        # 1. Invoke LangGraph Workflow
+        initial_state = {
+            "topic": topic,
+            "include_images": include_images,
+            "image_mode": image_mode,
+            "outline": [],
+            "slides": []
+        }
+        
+        result = graph.invoke(initial_state)
+        json_content = result.get("final_output")
+        
+        if not json_content:
+             raise ValueError("Graph failed to produce output")
+
         ppt_data = json.loads(json_content)
         
         # 2. Create Presentation Locally
-        # Use simple filename sanitization or uuid usually, keeping it simple for now
         filename = f"presentation_{os.urandom(4).hex()}.pptx"
         output_path = ppt_utils.create_ppt(ppt_data, filename=filename, image_mode=image_mode if include_images else None)
 
         # 3. Return the Download URL
-        # We need a route to serve this file.
         download_url = url_for('download_file', filename=filename)
         
         return jsonify({
