@@ -7,5 +7,4 @@ google-genai
 langgraph
 langchain
 langchain-google-genai
-python-pptx
-requests
+APScheduler

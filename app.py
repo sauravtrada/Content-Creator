@@ -3,9 +3,38 @@ from agent_graph import graph
 import ppt_utils
 import json
 import os
+import time
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24) 
+app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24))
+
+# --- Background Cleanup Task ---
+def cleanup_old_files():
+    """Deletes .pptx files older than 1 hour."""
+    now = time.time()
+    cutoff = now - 3600  # 1 hour
+    directory = os.path.dirname(os.path.abspath(__file__))
+    
+    # print("Running cleanup task...") 
+    for filename in os.listdir(directory):
+        if filename.endswith(".pptx") and filename.startswith("presentation_"):
+            filepath = os.path.join(directory, filename)
+            try:
+                if os.path.getmtime(filepath) < cutoff:
+                    os.remove(filepath)
+                    print(f"Deleted old file: {filename}")
+            except Exception as e:
+                print(f"Error checking/deleting {filename}: {e}")
+
+# Initialize Scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=cleanup_old_files, trigger="interval", minutes=60)
+scheduler.start()
+
+# Shut down the scheduler when exiting the app
+atexit.register(lambda: scheduler.shutdown())
 
 @app.route("/")
 def index():
@@ -17,6 +46,10 @@ def generate_ppt():
     topic = data.get("topic")
     include_images = data.get("include_images", False)
     image_mode = data.get("image_mode", "manual")
+    num_slides = int(data.get("num_slides", 5))
+    tone = data.get("tone", "Professional")
+    audience = data.get("audience", "General Audience")
+    additional_instructions = data.get("additional_instructions", "")
 
     if not topic:
         return jsonify({"error": "Topic is required"}), 400
@@ -27,6 +60,10 @@ def generate_ppt():
             "topic": topic,
             "include_images": include_images,
             "image_mode": image_mode,
+            "num_slides": num_slides,
+            "tone": tone,
+            "audience": audience,
+            "additional_instructions": additional_instructions,
             "outline": [],
             "slides": []
         }

@@ -16,6 +16,10 @@ class AgentState(TypedDict):
     include_images: bool
     image_mode: str
     presentation_title: str
+    num_slides: int
+    tone: str
+    audience: str
+    additional_instructions: str
     outline: List[str]      # List of Slide Headers
     slides: List[Dict[str, Any]] # List of slide objects
     final_output: str       # The final JSON string for the app
@@ -32,6 +36,37 @@ llm = ChatGoogleGenerativeAI(
     max_retries=3
 )
 
+# --- Helper: Robust JSON Extraction ---
+def extract_json(text):
+    """
+    Extracts JSON from a string, handling markdown code blocks and extra text.
+    """
+    import re
+    try:
+        # 1. Try to find JSON within ```json ... ``` or ``` ... ```
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+
+        # 2. Try to find the first '{' and the last '}'
+        # This is a fallback if no markdown blocks are found
+        match = re.search(r"(\{.*\})", text, re.DOTALL)
+        if match:
+             return json.loads(match.group(1))
+        
+        match = re.search(r"(\[.*\])", text, re.DOTALL)
+        if match:
+             return json.loads(match.group(1))
+
+        # 3. Try raw parsing
+        return json.loads(text)
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
 # --- 3. Node Functions ---
 
 def planner_node(state: AgentState):
@@ -41,36 +76,39 @@ def planner_node(state: AgentState):
     """
     print(f"--- [Planner] Planning topic: {state['topic']} ---")
     
+    num_slides = state.get('num_slides', 5)
+    tone = state.get('tone', 'professional')
+    audience = state.get('audience', 'general audience')
+    instructions = state.get('additional_instructions', '')
+    
     prompt = f"""
     You are an expert presentation planner.
     Topic: "{state['topic']}"
+    Target Audience: "{audience}"
+    Tone: "{tone}"
+    Additional Instructions: "{instructions}"
     
-    Task: Generate a 5-slide outline for this topic.
+    Task: Generate a {num_slides}-slide outline for this topic.
     Return ONLY a JSON object with this structure:
     {{
         "title": "Main Presentation Title",
-        "outline": ["Slide 1 Title", "Slide 2 Title", "Slide 3 Title", "Slide 4 Title", "Slide 5 Title"]
+        "outline": ["Slide 1 Title", "Slide 2 Title", ... "Slide {num_slides} Title"]
     }}
     """
     
     response = llm.invoke(prompt)
-    content = response.content.strip()
+    data = extract_json(response.content)
     
-    # Simple cleanup
-    if content.startswith("```json"):
-        content = content[7:-3]
-    
-    try:
-        data = json.loads(content)
+    if data:
         return {
             "presentation_title": data.get("title", state['topic']),
             "outline": data.get("outline", [])
         }
-    except json.JSONDecodeError:
+    else:
         # Fallback if JSON fails
         return {
             "presentation_title": state['topic'],
-            "outline": [f"Slide {i+1} for {state['topic']}" for i in range(5)]
+            "outline": [f"Slide {i+1} for {state['topic']}" for i in range(state.get('num_slides', 5))]
         }
 
 def content_node(state: AgentState):
@@ -80,7 +118,7 @@ def content_node(state: AgentState):
     """
     print(f"--- [Writer] Writing content for {len(state['outline'])} slides ---")
     
-    outline_str = "\n".join(f"- {title}" for title in state['outline'])
+    outline_str = "\\n".join(f"- {title}" for title in state['outline'])
     
     image_instruction = ""
     if state['include_images']:
@@ -91,6 +129,9 @@ def content_node(state: AgentState):
     prompt = f"""
     You are a professional presentation content writer.
     Presentation Title: "{state['presentation_title']}"
+    Target Audience: "{state.get('audience', 'general audience')}"
+    Tone: "{state.get('tone', 'professional')}"
+    
     Outline:
     {outline_str}
     
@@ -113,24 +154,18 @@ def content_node(state: AgentState):
     Rules:
     - Match the headings from the outline.
     - MAXIMUM 5 lines per slide.
-    - Content must be concise (bullet points).
+    - Content must be concise (bullet points) and match the requested tone and audience.
     - Use "level": 0 for main points, "level": 1 for sub-points.
     {image_instruction}
     """
     
     response = llm.invoke(prompt)
-    text = response.content.strip()
+    slides = extract_json(response.content)
     
-    if text.startswith("```json"):
-        text = text[7:-3]
-    elif text.startswith("```"):
-        text = text[3:-3]
-        
-    try:
-        slides = json.loads(text)
+    if slides:
         return {"slides": slides}
-    except Exception as e:
-        print(f"Writer Error: {e}")
+    else:
+        print(f"Writer Error: Failed to parse JSON")
         return {"slides": []}
 
 def aggregator_node(state: AgentState):
