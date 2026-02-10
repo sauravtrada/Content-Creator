@@ -14,9 +14,9 @@ THEME_FONT = "Calibri"
 TITLE_SIZE = Pt(60)          # Main Title (Cover)
 SUBTITLE_SIZE = Pt(32)       # Subtitle (Cover)
 SLIDE_HEADING_SIZE = Pt(44)  # Slide Title (Standard: 36-44pt)
-BODY_SIZE_L0 = Pt(28)        # Level 1 Bullets (Standard: 24-28pt)
-BODY_SIZE_L1 = Pt(24)        # Level 2 Bullets (Standard: 20-24pt)
-BODY_SIZE_L2 = Pt(20)        # Level 3 Bullets (Standard: 16-20pt)
+BODY_SIZE_L0 = Pt(22)        # Level 1 Bullets (Reduced)
+BODY_SIZE_L1 = Pt(18)        # Level 2 Bullets (Reduced)
+BODY_SIZE_L2 = Pt(16)        # Level 3 Bullets (Reduced)
 COLOR_PRIMARY = RGBColor(14, 42, 71)    # Dark Navy
 COLOR_ACCENT = RGBColor(0, 150, 136)    # Teal
 COLOR_TEXT_MAIN = RGBColor(64, 64, 64)  # Dark Gray
@@ -145,112 +145,13 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
     # 2. Pre-fetch Images (Parallel)
     # ... logic relies on having the final list of slides, so we paginate FIRST.
 
-    # --- helper: Paginate Slides ---
-    def paginate_slides(original_slides):
-        paginated = []
-        
-        # Height constants (approximate based on 7.5" total height)
-        # Top margin ~1.5" (Title) + Bottom margin ~0.5" (Footer) = ~2.0" used
-        # Usable height for body = 7.5 - 2.0 = 5.5 inches
-        # Let's use points. 1 inch = 72 pt. 5.5 inches = 396 pt.
-        # Conservative limit to ensure fit (reduced to prevent overlap with footer)
-        MAX_HEIGHT_PT = 300  
-        
-        # Character widths (approximate for Calibri)
-        # Full width (no image): ~12 inches usable width
-        # Half width (with image): ~6 inches usable width
-        # Average char width for body text (approx) -> distinct from line counting
-        # simple heuristic: chars_per_line = usable_width_inches * chars_per_inch
-        # chars_per_inch ~ 12 (for 12pt), for 28pt it's much less.
-        # Let's keep using char counts for wrapping estimation:
-        CHARS_PER_LINE_FULL = 60 # Approx for wide layout
-        CHARS_PER_LINE_HALF = 30 # Approx for two-column layout (narrower than before to be safe)
+    # Smart pagination removed by user request.
+    # We now strictly map 1 slide from the outline to 1 slide in the PPT.
 
-        # Content constants
-        # Leading/Margins per item (space before/after)
-        ITEM_SPACING_PT = {
-            0: 16, # 10 before + 6 after
-            1: 12, # 6 before + 6 after
-            2: 8   # 4 before + 4 after
-        }
-        FONT_SIZE_PT = {
-            0: 28,
-            1: 24,
-            2: 20
-        }
-
-        for slide_data in original_slides:
-            content_items = slide_data.get("content", [])
-            # Handle bullet_points fallback if present
-            if not content_items and "bullet_points" in slide_data:
-                content_items = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
-                
-            if not content_items:
-                paginated.append(slide_data)
-                continue
-
-            # Determine layout width for estimation using outer scope image_mode
-            is_half_width = image_mode in ['manual', 'auto']
-            chars_limit = CHARS_PER_LINE_HALF if is_half_width else CHARS_PER_LINE_FULL
-
-            current_slide_items = []
-            current_height = 0
-            
-            def estimate_text_height(text, level, width_chars):
-                if not text: return 0
-                lines = max(1, len(text) // width_chars + (1 if len(text) % width_chars > 0 else 0))
-                # Height = (lines * font_size * line_height_factor) + spacing
-                # Default line height is ~1.2
-                line_height = FONT_SIZE_PT.get(level, 24) * 1.2
-                total_text_height = lines * line_height
-                spacing = ITEM_SPACING_PT.get(level, 10)
-                return total_text_height + spacing
-
-            for item in content_items:
-                text = item.get("text", "")
-                level = item.get("level", 0)
-                
-                item_height = estimate_text_height(text, level, chars_limit)
-                
-                # Check if adding this item exceeds max height
-                # If it's the FIRST item, we must add it even if it's huge (or it will loop forever)
-                if current_height + item_height > MAX_HEIGHT_PT and current_slide_items:
-                    # Push current slide
-                    new_slide = slide_data.copy()
-                    new_slide["content"] = current_slide_items
-                    paginated.append(new_slide)
-                    
-                    # Reset for next slide
-                    current_slide_items = [item]
-                    current_height = item_height
-                else:
-                    current_slide_items.append(item)
-                    current_height += item_height
-            
-            # Append the last chunk
-            if current_slide_items:
-                new_slide = slide_data.copy()
-                new_slide["content"] = current_slide_items
-                # If we split this slide (i.e. paginated had entries from this slide loop already),
-                # we might want to mark continuation.
-                
-                base_title = slide_data.get("heading", "")
-                
-                # Check if we already added a part of this slide
-                if len(paginated) > 0 and paginated[-1].get("heading").replace(" (Cont.)", "") == base_title.replace(" (Cont.)", ""):
-                     new_slide["heading"] = f"{base_title} (Cont.)"
-                     # Remove image requirement for continuation slides to save space/redundancy
-                     if "image_search_query" in new_slide:
-                         del new_slide["image_search_query"]
-
-                paginated.append(new_slide)
-
-        return paginated
-
-    # 3. Process Slides (Paginate & Fetch)
+    # 3. Process Slides (Fetch Only)
     
-    # Run pagination
-    final_slides_data = paginate_slides(data.get("slides", []))
+    # Use slides directly without pagination
+    final_slides_data = data.get("slides", [])
     
     image_map = {}
     
