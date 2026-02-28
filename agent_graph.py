@@ -302,9 +302,6 @@ def check_length(state: AgentState):
         print("--- [Edge] Max retries reached, proceeding ---")
         return "aggregator"
         
-    for slide in slides:
-        text_content = ""
-        for item in slide.get('content', []):
     long_slide_indices = []
     for i, slide in enumerate(slides):
         text_content = ""
