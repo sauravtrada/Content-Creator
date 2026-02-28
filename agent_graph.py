@@ -24,6 +24,7 @@ class AgentState(TypedDict):
     theme: Dict[str, Any]   # Theme colors and fonts
     slides: List[Dict[str, Any]] # List of slide objects
     final_output: str       # The final JSON string for the app
+    retry_count: int        # Track refinement attempts
 
 # --- 2. LLM Setup ---
 if not os.getenv("GEMINI_API_KEY"):
@@ -240,6 +241,85 @@ def aggregator_node(state: AgentState):
     
     return {"final_output": json.dumps(final_structure)}
 
+def refine_node(state: AgentState):
+    """
+    Agent 4: Refiner
+    Shortens slides that are too long.
+    """
+    print("--- [Refiner] Refining slide content ---")
+    
+    slides = state['slides']
+    retry_count = state.get('retry_count', 0)
+    
+    # Identify long slides (simple heuristic: > 600 chars)
+    # real fit depends on ppt_utils logic, but this is a good proxy for the AI.
+    long_slide_indices = []
+    for i, slide in enumerate(slides):
+        text_content = ""
+        for item in slide.get('content', []):
+            text_content += item.get('text', "")
+        
+        if len(text_content) > 500:
+            long_slide_indices.append(i)
+            
+    if not long_slide_indices:
+        return {"retry_count": retry_count + 1} # Should not happen if check_length works, but safe fallback
+
+    prompt = f"""
+    You are a professional editor.
+    Some slides in this presentation are overly verbose and will overflow.
+    
+    Task: Rewrite the content for the specified slides to be more CONCISE.
+    - Reduce word count by ~30%.
+    - Keep the same core information.
+    - Maintain the JSON structure.
+    
+    Slides to Fix (Indices: {long_slide_indices}):
+    {json.dumps([slides[i] for i in long_slide_indices])}
+    
+    Return ONLY the corrected JSON list for THESE slides.
+    """
+    
+    response = llm.invoke(prompt)
+    fixed_slides = extract_json(response.content)
+    
+    if fixed_slides:
+        # Merge back
+        for i, original_index in enumerate(long_slide_indices):
+            if i < len(fixed_slides):
+                slides[original_index] = fixed_slides[i]
+                
+    return {"slides": slides, "retry_count": retry_count + 1}
+
+def check_length(state: AgentState):
+    """
+    Conditional Edge Logic
+    """
+    slides = state['slides']
+    retry_count = state.get('retry_count', 0)
+    
+    if retry_count >= 2:
+        print("--- [Edge] Max retries reached, proceeding ---")
+        return "aggregator"
+        
+    for slide in slides:
+        text_content = ""
+        for item in slide.get('content', []):
+    long_slide_indices = []
+    for i, slide in enumerate(slides):
+        text_content = ""
+        for item in slide.get('content', []):
+            text_content += item.get('text', "")
+            
+        if len(text_content) > 500:
+             long_slide_indices.append(i)
+             
+    if long_slide_indices:
+        print(f"--- [Edge] Found {len(long_slide_indices)} slides too long, refining... ---")
+        return "refine"
+    else:
+        return "aggregator"
+
 # --- 4. Graph Construction ---
 
 builder = StateGraph(AgentState)
@@ -247,13 +327,24 @@ builder = StateGraph(AgentState)
 builder.add_node("planner", planner_node)
 builder.add_node("designer", designer_node)
 builder.add_node("writer", content_node)
+builder.add_node("refiner", refine_node)
 builder.add_node("aggregator", aggregator_node)
 
 builder.set_entry_point("planner")
 
+# Standard flow: Planner -> Designer -> Writer
 builder.add_edge("planner", "designer")
 builder.add_edge("designer", "writer")
-builder.add_edge("writer", "aggregator")
+
+# Conditional flow: Writer -> Check Length
+# If too long -> Refine -> Writer (or evaluate again). Actually, let's just go Refine -> Aggregator for safety, 
+# or Refine -> Check Length again. To avoid complex loops, we'll do:
+# Writer -> Evaluate Length
+builder.add_conditional_edges("writer", check_length, {"refine": "refiner", "aggregator": "aggregator"})
+
+# Refiner always goes back to evaluate length
+builder.add_conditional_edges("refiner", check_length, {"refine": "refiner", "aggregator": "aggregator"})
+
 builder.add_edge("aggregator", END)
 
 graph = builder.compile()
