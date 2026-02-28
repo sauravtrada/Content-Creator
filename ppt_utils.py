@@ -9,19 +9,13 @@ import concurrent.futures
 import urllib.parse
 from datetime import datetime
 
-# --- Constants & Theme ---
-THEME_FONT = "Calibri" 
-TITLE_SIZE = Pt(60)          # Main Title (Cover)
-SUBTITLE_SIZE = Pt(32)       # Subtitle (Cover)
-SLIDE_HEADING_SIZE = Pt(44)  # Slide Title (Standard: 36-44pt)
-BODY_SIZE_L0 = Pt(28)        # Level 1 Bullets (Standard: 24-28pt)
-BODY_SIZE_L1 = Pt(24)        # Level 2 Bullets (Standard: 20-24pt)
-BODY_SIZE_L2 = Pt(20)        # Level 3 Bullets (Standard: 16-20pt)
-COLOR_PRIMARY = RGBColor(14, 42, 71)    # Dark Navy
-COLOR_ACCENT = RGBColor(0, 150, 136)    # Teal
-COLOR_TEXT_MAIN = RGBColor(64, 64, 64)  # Dark Gray
-COLOR_TEXT_LIGHT = RGBColor(117, 117, 117) # Medium Gray
-COLOR_BACKGROUND = RGBColor(250, 250, 250) # Off-white/Light Gray
+# --- Constants ---
+TITLE_SIZE = Pt(54)          # Main Title (Cover)
+SUBTITLE_SIZE = Pt(28)       # Subtitle (Cover)
+SLIDE_HEADING_SIZE = Pt(40)  # Slide Title (Standard: 36-44pt)
+BODY_SIZE_L0 = Pt(24)        # Level 1 Bullets
+BODY_SIZE_L1 = Pt(20)        # Level 2 Bullets
+BODY_SIZE_L2 = Pt(18)        # Level 3 Bullets
 # Layout Constants
 SLIDE_WIDTH = Inches(13.333)
 SLIDE_HEIGHT = Inches(7.5)
@@ -51,7 +45,7 @@ def fetch_image(query):
     
     return None
 
-def apply_slide_footer(slide, slide_number, presentation_title):
+def apply_slide_footer(slide, slide_number, presentation_title, color_text_light=RGBColor(117, 117, 117)):
     """Adds a footer with date, title, and slide number."""
     # Date
     date_str = datetime.now().strftime("%B %d, %Y")
@@ -70,7 +64,7 @@ def apply_slide_footer(slide, slide_number, presentation_title):
     p = tf.paragraphs[0]
     p.text = str(slide_number)
     p.font.size = Pt(12)
-    p.font.color.rgb = COLOR_TEXT_LIGHT
+    p.font.color.rgb = color_text_light
     p.alignment = PP_ALIGN.RIGHT
 
     # 2. Footer Text (Bottom Left) - Title & Date
@@ -82,7 +76,7 @@ def apply_slide_footer(slide, slide_number, presentation_title):
     p2 = tf2.paragraphs[0]
     p2.text = f"{presentation_title} | {date_str}"
     p2.font.size = Pt(12)
-    p2.font.color.rgb = COLOR_TEXT_LIGHT
+    p2.font.color.rgb = color_text_light
     p2.alignment = PP_ALIGN.LEFT
 
 def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
@@ -96,11 +90,37 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
 
     presentation_title = data.get("title", "Untitled Presentation")
 
+    # --- Dynamic Theme Parsing ---
+    theme_data = data.get("theme", {})
+    THEME_FONT = theme_data.get("font", "Calibri")
+    
+    def parse_hex(hex_str, default_color):
+        if not hex_str: return default_color
+        try:
+            h = str(hex_str).replace("#", "").strip()
+            if len(h) == 6:
+                return RGBColor.from_string(h.upper())
+            elif len(h) == 3:
+                return RGBColor.from_string("".join(c*2 for c in h).upper())
+        except Exception:
+            pass
+        return default_color
+
+    COLOR_PRIMARY = parse_hex(theme_data.get("color_primary"), RGBColor(14, 42, 71))
+    COLOR_ACCENT = parse_hex(theme_data.get("color_accent"), RGBColor(0, 150, 136))
+    COLOR_BACKGROUND = parse_hex(theme_data.get("color_background"), RGBColor(250, 250, 250))
+    COLOR_TEXT_MAIN = parse_hex(theme_data.get("color_text_main"), RGBColor(64, 64, 64))
+    COLOR_TEXT_LIGHT = parse_hex(theme_data.get("color_text_light"), RGBColor(117, 117, 117))
+
     # --- helper: apply title formatting ---
     def format_slide_title(shape, text):
         shape.text = text
         tf = shape.text_frame
-        tf.vertical_anchor = MSO_ANCHOR.BOTTOM
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        tf.margin_top = 0
+        tf.margin_bottom = 0
+        tf.margin_left = 0
+        tf.margin_right = 0
         p = tf.paragraphs[0]
         p.font.bold = True
         p.font.size = SLIDE_HEADING_SIZE
@@ -153,8 +173,9 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
         # Top margin ~1.5" (Title) + Bottom margin ~0.5" (Footer) = ~2.0" used
         # Usable height for body = 7.5 - 2.0 = 5.5 inches
         # Let's use points. 1 inch = 72 pt. 5.5 inches = 396 pt.
-        # Conservative limit to ensure fit (reduced to prevent overlap with footer)
-        MAX_HEIGHT_PT = 300  
+        # Reduced font sizes mean we can fit more logically, but let's be strict to prevent footer spill.
+        # Height of slide: 7.5". Footer starts at ~7.0". Body starts at ~1.5". Max height = 5.5" = 396pt.
+        MAX_HEIGHT_PT = 380
         
         # Character widths (approximate for Calibri)
         # Full width (no image): ~12 inches usable width
@@ -174,9 +195,9 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
             2: 8   # 4 before + 4 after
         }
         FONT_SIZE_PT = {
-            0: 28,
-            1: 24,
-            2: 20
+            0: 24,
+            1: 20,
+            2: 18
         }
 
         for slide_data in original_slides:
@@ -306,10 +327,10 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
         title_shape.left = MARGIN_LEFT
         title_shape.top = MARGIN_TOP
         title_shape.width = SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
-        title_shape.height = Inches(1.3)
+        title_shape.height = Inches(0.6)
 
         # Footer
-        apply_slide_footer(slide, i + 1, presentation_title)
+        apply_slide_footer(slide, i + 1, presentation_title, COLOR_TEXT_LIGHT)
 
         # Body (Bullet points)
         # In Layout 3 (Two Content), placeholder[1] is Left, [2] is Right.
@@ -319,16 +340,16 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
         
         # Enforce Body Alignment & Size
         body_shape.left = MARGIN_LEFT
-        body_shape.top = MARGIN_TOP + Inches(1.3) + Inches(0.2) # Below title
+        body_shape.top = MARGIN_TOP + Inches(0.7) # Tighter gap below title
         
         if use_image_layout:
-             # Half width (adjust slightly to leave gap)
-             body_shape.width = int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) / 2)
+             # Leaves a 10% gap in the middle
+             body_shape.width = int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.45)
         else:
-             # Full width
              body_shape.width = SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
              
-        body_shape.height = SLIDE_HEIGHT - body_shape.top - MARGIN_BOTTOM - Inches(0.5) # Space for footer
+        # Stop explicitly at 6.6 inches down so it NEVER hits the footer (which is at 7.0)
+        body_shape.height = Inches(6.6) - body_shape.top
         
         tf = body_shape.text_frame
         tf.clear() 
@@ -355,36 +376,45 @@ def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
                     p.font.size = BODY_SIZE_L0 
                     p.font.bold = False 
                     p.font.color.rgb = COLOR_TEXT_MAIN
-                    p.space_before = Pt(12) 
-                    p.space_after = Pt(6)
+                    p.space_before = Pt(4) 
+                    p.space_after = Pt(4)
                 elif level == 1:
                     p.font.size = BODY_SIZE_L1
-                    p.font.color.rgb = COLOR_TEXT_LIGHT
-                    p.space_before = Pt(6)
-                    p.space_after = Pt(6)
+                    p.font.color.rgb = COLOR_TEXT_MAIN # Use main color instead of light for better visibility
+                    p.space_before = Pt(4)
+                    p.space_after = Pt(2)
                 else:
                     p.font.size = BODY_SIZE_L2
-                    p.font.color.rgb = COLOR_TEXT_LIGHT
+                    p.font.color.rgb = COLOR_TEXT_MAIN # Use main color instead of light for better visibility
                     p.space_before = Pt(4)
-                    p.space_after = Pt(4)
+                    p.space_after = Pt(2)
 
         # Image Handling
         # If Two Content layout, image goes to placeholder[2]
         if use_image_layout and image_mode == 'auto':
             if i in image_map:
                 try:
-                    if len(shapes.placeholders) > 2:
-                        image_placeholder = shapes.placeholders[2]
-                        image_stream = image_map[i]
-                        image_stream.seek(0)
-                        
-                        image_placeholder.insert_picture(image_stream)
-                        # Crop logic could be added here if needed, but insert_picture usually fits well.
-                        
+                    # Fix overlap: Place image placeholder on the right side
+                    img_left = MARGIN_LEFT + int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.55) 
+                    img_top = body_shape.top
+                    img_width = int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.45)
+                    img_height = body_shape.height
+                    
+                    image_stream = image_map[i]
+                    image_stream.seek(0)
+                    
+                    slide.shapes.add_picture(image_stream, img_left, img_top, img_width, img_height)
+
                 except Exception as e:
                     print(f"Error inserting image for slide {i}: {e}")
-            elif len(shapes.placeholders) > 2:
-                 pass # Empty placeholder remains
+            
+        # Cleanup: Move unused generic placeholders off-screen if we manipulated layouts.
+        # **Crucial**: We MUST NOT delete them (.remove(element)). Deleting placeholders on Two Content layouts
+        # forces PowerPoint to auto-expand the remaining text box to 100% width, causing images to overlap the text!
+        if use_image_layout and image_mode == 'auto':
+            for ph in slide.shapes.placeholders:
+                if ph.placeholder_format.idx not in [0, 1]:  # Keep only Title (0) and Body (1)
+                    ph.left = Inches(-20) # Move far off-screen instead of deleting
 
     # Ensure output directory exists
     output_path = os.path.abspath(filename)

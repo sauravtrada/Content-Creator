@@ -21,6 +21,7 @@ class AgentState(TypedDict):
     audience: str
     additional_instructions: str
     outline: List[str]      # List of Slide Headers
+    theme: Dict[str, Any]   # Theme colors and fonts
     slides: List[Dict[str, Any]] # List of slide objects
     final_output: str       # The final JSON string for the app
 
@@ -94,6 +95,8 @@ def planner_node(state: AgentState):
         "title": "Main Presentation Title",
         "outline": ["Slide 1 Title", "Slide 2 Title", ... "Slide {num_slides} Title"]
     }}
+    
+    CRITICAL RULE: Slide Titles in the `outline` array MUST be short and punchy. Maximum 3 to 5 words per title. DO NOT write long sentences for slide titles.
     """
     
     response = llm.invoke(prompt)
@@ -110,6 +113,54 @@ def planner_node(state: AgentState):
             "presentation_title": state['topic'],
             "outline": [f"Slide {i+1} for {state['topic']}" for i in range(state.get('num_slides', 5))]
         }
+
+def designer_node(state: AgentState):
+    """
+    Agent 1.5: Designer
+    Generates a color palette and font pairing based on the topic.
+    """
+    print(f"--- [Designer] Designing theme for: {state['topic']} ---")
+    
+    tone = state.get('tone', 'professional')
+    
+    prompt = f"""
+    You are an expert presentation designer.
+    Topic: "{state['topic']}"
+    Tone: "{tone}"
+    
+    Task: Design a modern, beautiful color palette and font pairing for this presentation.
+    
+    Output Format:
+    Return ONLY a JSON object with this structure:
+    {{
+        "font": "Font Name (e.g. Arial, Calibri, Tahoma, Verdana, Trebuchet MS)", 
+        "color_primary": "HEX_CODE (e.g. 0E2A47)",
+        "color_accent": "HEX_CODE",
+        "color_background": "HEX_CODE",
+        "color_text_main": "HEX_CODE",
+        "color_text_light": "HEX_CODE"
+    }}
+    
+    Rules:
+    - Omit the '#' in hex codes.
+    - Ensure high contrast: if background is dark, text must be light, and vice versa.
+    """
+    
+    response = llm.invoke(prompt)
+    data = extract_json(response.content)
+    
+    if data:
+        return {"theme": data}
+    else:
+        # Fallback theme
+        return {"theme": {
+            "font": "Calibri",
+            "color_primary": "0E2A47",
+            "color_accent": "009688",
+            "color_background": "FAFAFA",
+            "color_text_main": "404040",
+            "color_text_light": "757575"
+        }}
 
 def content_node(state: AgentState):
     """
@@ -135,26 +186,32 @@ def content_node(state: AgentState):
     Outline:
     {outline_str}
     
-    Task: Write the detailed content for these slides.
+    Task: Write the detailed content for EXACTLY these slides. You MUST create one slide object for each title in the Outline above.
+    The "heading" of each slide MUST EXACTLY match the title from the Outline. DO NOT use the same heading for every slide.
     
     Output Format:
     Return ONLY a detailed JSON list of slide objects.
     Example:
     [
         {{
-            "heading": "Slide 1 Title",
+            "heading": "Slide 1 Title From Outline",
             "content": [
-                {{ "text": "Main point", "level": 0 }},
-                {{ "text": "Sub-point details", "level": 1 }}
+                {{ "text": "Main point 1", "level": 0 }},
+                {{ "text": "Sub-point details", "level": 1 }},
+                {{ "text": "Another main point", "level": 0 }}
             ],
             "image_search_query": "search query"
+        }},
+        {{
+            "heading": "Slide 2 Title From Outline",
+            "content": [ ... ]
         }}
     ]
     
     Rules:
-    - Match the headings from the outline.
-    - MAXIMUM 5 lines per slide.
-    - Content must be concise (bullet points) and match the requested tone and audience.
+    - You MUST use the exact headings from the provided Outline.
+    - Write rich, detailed content (up to 7 or 8 bullet points per slide).
+    - Content must be concise but informative, matching the requested tone and audience.
     - Use "level": 0 for main points, "level": 1 for sub-points.
     {image_instruction}
     """
@@ -177,6 +234,7 @@ def aggregator_node(state: AgentState):
     
     final_structure = {
         "title": state['presentation_title'],
+        "theme": state.get('theme', {}),
         "slides": state['slides']
     }
     
@@ -187,12 +245,14 @@ def aggregator_node(state: AgentState):
 builder = StateGraph(AgentState)
 
 builder.add_node("planner", planner_node)
+builder.add_node("designer", designer_node)
 builder.add_node("writer", content_node)
 builder.add_node("aggregator", aggregator_node)
 
 builder.set_entry_point("planner")
 
-builder.add_edge("planner", "writer")
+builder.add_edge("planner", "designer")
+builder.add_edge("designer", "writer")
 builder.add_edge("writer", "aggregator")
 builder.add_edge("aggregator", END)
 
