@@ -4,6 +4,8 @@ import ppt_utils
 import json
 import os
 import time
+import tempfile
+from rag_engine import ingest_document
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
@@ -16,8 +18,6 @@ def cleanup_old_files():
     now = time.time()
     cutoff = now - 3600  # 1 hour
     directory = os.path.dirname(os.path.abspath(__file__))
-    
-    # print("Running cleanup task...") 
     for filename in os.listdir(directory):
         if filename.endswith(".pptx") and filename.startswith("presentation_"):
             filepath = os.path.join(directory, filename)
@@ -42,22 +42,56 @@ def index():
 
 @app.route("/generate_ppt", methods=["POST"])
 def generate_ppt():
-    data = request.get_json()
-    topic = data.get("topic")
-    include_images = data.get("include_images", False)
-    image_mode = data.get("image_mode", "manual")
-    num_slides = int(data.get("num_slides", 5))
-    tone = data.get("tone", "Professional")
-    audience = data.get("audience", "General Audience")
-    additional_instructions = data.get("additional_instructions", "")
+    topic = request.form.get("topic")
+    include_images = request.form.get("include_images", "false").lower() == "true"
+    image_mode = request.form.get("image_mode", "manual")
+    num_slides = int(request.form.get("num_slides", 5))
+    tone = request.form.get("tone", "Professional")
+    audience = request.form.get("audience", "General Audience")
+    additional_instructions = request.form.get("additional_instructions", "")
+    source_type = request.form.get("source_type", "topic_only")
 
     if not topic:
         return jsonify({"error": "Topic is required"}), 400
 
     try:
+        rag_store = None
+        
+        if source_type == 'pdf':
+            if 'file' not in request.files:
+                return jsonify({"error": "No PDF file uploaded"}), 400
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({"error": "No file selected"}), 400
+            
+            # Save temp file
+            temp_dir = tempfile.gettempdir()
+            temp_path = os.path.join(temp_dir, os.urandom(8).hex() + "_" + file.filename)
+            file.save(temp_path)
+            
+            try:
+                rag_store = ingest_document(source=temp_path, source_type='pdf')
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+        elif source_type == 'url':
+            source_url = request.form.get("source_url")
+            if not source_url:
+                return jsonify({"error": "URL is required"}), 400
+            rag_store = ingest_document(source=source_url, source_type='url')
+            
+        elif source_type == 'text':
+            source_text = request.form.get("source_text")
+            if not source_text:
+                return jsonify({"error": "Raw text is required"}), 400
+            rag_store = ingest_document(source=source_text, source_type='text')
+
         # 1. Invoke LangGraph Workflow
         initial_state = {
             "topic": topic,
+            "source_type": source_type,
+            "rag_store": rag_store,
             "include_images": include_images,
             "image_mode": image_mode,
             "num_slides": num_slides,

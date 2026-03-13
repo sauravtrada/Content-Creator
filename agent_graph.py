@@ -13,6 +13,8 @@ load_dotenv(override=True)
 # --- 1. State Definition ---
 class AgentState(TypedDict):
     topic: str
+    source_type: str        # 'pdf', 'url', 'text', or None
+    rag_store: Any          # The FAISS vector store
     include_images: bool
     image_mode: str
     presentation_title: str
@@ -31,7 +33,6 @@ if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("GEMINI_API_KEY not found in environment variables")
 
 llm = ChatGoogleGenerativeAI(
-    #model="gemini-2.0-flash", 
     model="gemini-2.5-flash", 
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0.7,
@@ -83,12 +84,24 @@ def planner_node(state: AgentState):
     audience = state.get('audience', 'general audience')
     instructions = state.get('additional_instructions', '')
     
+    rag_context = ""
+    if state.get('rag_store'):
+        print("--- [Planner] Querying RAG for general document overview ---")
+        retriever = state['rag_store'].as_retriever(search_kwargs={"k": 4})
+        # Querying for a general overview relative to the topic
+        docs = retriever.invoke(f"Provide a summary and main points regarding: {state['topic']}")
+        
+        # Format the context
+        doc_texts = "\\n\\n".join(doc.page_content for doc in docs)
+        rag_context = f"\\nUse the following document excerpts to inform your outline structure:\\n{doc_texts}\\n"
+    
     prompt = f"""
     You are an expert presentation planner.
     Topic: "{state['topic']}"
     Target Audience: "{audience}"
     Tone: "{tone}"
     Additional Instructions: "{instructions}"
+    {rag_context}
     
     Task: Generate a {num_slides}-slide outline for this topic.
     Return ONLY a JSON object with this structure:
@@ -178,11 +191,26 @@ def content_node(state: AgentState):
         - For each slide, include an "image_search_query" (2-4 words) to find a relevant image.
         """
         
+    rag_context = ""
+    if state.get('rag_store'):
+        print("--- [Writer] Querying RAG for slide contexts (Batched) ---")
+        retriever = state['rag_store'].as_retriever(search_kwargs={"k": 2})
+        
+        context_parts = []
+        for title in state['outline']:
+            docs = retriever.invoke(title)
+            doc_texts = "\\n".join(doc.page_content for doc in docs)
+            context_parts.append(f"--- Context for slide '{title}' ---\\n{doc_texts}")
+            
+        rag_context = "\\n".join(context_parts)
+        rag_context = f"\\nCRITICAL INSTRUCTION: Use the following retrieved document context to write the slide content. Do not hallucinate facts outside the context if possible.\\n{rag_context}\\n"
+        
     prompt = f"""
     You are a professional presentation content writer.
     Presentation Title: "{state['presentation_title']}"
     Target Audience: "{state.get('audience', 'general audience')}"
     Tone: "{state.get('tone', 'professional')}"
+    {rag_context}
     
     Outline:
     {outline_str}

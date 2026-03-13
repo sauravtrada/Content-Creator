@@ -96,8 +96,37 @@
         <h1>PPT Generator</h1>
 
         <div id="generateSection">
-            <p>Enter a topic to generate a presentation.</p>
-            <input type="text" id="topicInput" placeholder="e.g., Quantum Computing">
+            <div style="text-align: left; margin-bottom: 1rem;">
+                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Source Type</label>
+                <select id="sourceType" onchange="toggleSourceInputs()"
+                    style="width: 100%; padding: 11px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                    <option value="topic_only">Topic Only (No Reference Document)</option>
+                    <option value="pdf">PDF Upload</option>
+                    <option value="url">Web URL</option>
+                    <option value="text">Raw Text</option>
+                </select>
+            </div>
+
+            <div style="text-align: left; margin-bottom: 1rem;">
+                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Topic (Required)</label>
+                <input type="text" id="topicInput" placeholder="e.g., Quantum Computing">
+            </div>
+
+            <!-- Dynamic Source Inputs -->
+            <div id="pdfInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
+                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Upload PDF</label>
+                <input type="file" id="pdfFile" accept="application/pdf" style="width: 100%;">
+            </div>
+
+            <div id="urlInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
+                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Website URL</label>
+                <input type="url" id="urlInput" placeholder="https://example.com/article" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+
+            <div id="textInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
+                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Raw Text</label>
+                <textarea id="rawTextInput" placeholder="Paste document text here..." rows="4" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; box-sizing: border-box;"></textarea>
+            </div>
 
             <div
                 style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 5px; text-align: left;">
@@ -160,12 +189,22 @@
             document.getElementById('imageOptions').style.display = isChecked ? 'block' : 'none';
         }
 
+        function toggleSourceInputs() {
+            const sourceType = document.getElementById('sourceType').value;
+            document.getElementById('pdfInputGroup').style.display = sourceType === 'pdf' ? 'block' : 'none';
+            document.getElementById('urlInputGroup').style.display = sourceType === 'url' ? 'block' : 'none';
+            document.getElementById('textInputGroup').style.display = sourceType === 'text' ? 'block' : 'none';
+        }
+
         async function generatePPT() {
+            const sourceType = document.getElementById('sourceType').value;
             const topic = document.getElementById('topicInput').value;
             const numSlides = document.getElementById('numSlides').value;
             const tone = document.getElementById('toneInput').value;
             const audience = document.getElementById('audienceInput').value;
             const instructions = document.getElementById('instructionsInput').value;
+            const includeImages = document.getElementById('includeImages').checked;
+            const imageMode = document.querySelector('input[name="imageMode"]:checked').value;
 
             const btn = document.getElementById('generateBtn');
             const status = document.getElementById('status');
@@ -176,30 +215,42 @@
                 return;
             }
 
+            // Build FormData for multipart submission
+            const formData = new FormData();
+            formData.append('topic', topic);
+            formData.append('num_slides', numSlides);
+            formData.append('tone', tone);
+            formData.append('audience', audience);
+            formData.append('additional_instructions', instructions);
+            formData.append('include_images', includeImages);
+            formData.append('image_mode', imageMode);
+            formData.append('source_type', sourceType);
+
+            // Handle specific source data
+            if (sourceType === 'pdf') {
+                const pdfFile = document.getElementById('pdfFile').files[0];
+                if (!pdfFile) { alert("Please select a PDF file"); return; }
+                formData.append('file', pdfFile);
+            } else if (sourceType === 'url') {
+                const urlInput = document.getElementById('urlInput').value;
+                if (!urlInput) { alert("Please enter a URL"); return; }
+                formData.append('source_url', urlInput);
+            } else if (sourceType === 'text') {
+                const rawText = document.getElementById('rawTextInput').value;
+                if (!rawText) { alert("Please enter some raw text"); return; }
+                formData.append('source_text', rawText);
+            }
+
             // UI State: Loading
             btn.disabled = true;
             btn.innerHTML = '<div class="spinner"></div> Generating Slides...';
-            status.textContent = "AI is designing your presentation...";
+            status.textContent = "AI is reading documents and designing your presentation...";
             if (resultsDiv) resultsDiv.innerHTML = '';
 
             try {
-                const includeImages = document.getElementById('includeImages').checked;
-                const imageMode = document.querySelector('input[name="imageMode"]:checked').value;
-
                 const response = await fetch('/generate_ppt', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        topic: topic,
-                        num_slides: numSlides,
-                        tone: tone,
-                        audience: audience,
-                        additional_instructions: instructions,
-                        include_images: includeImages,
-                        image_mode: imageMode
-                    })
+                    body: formData // No Content-Type header needed; browser sets it with boundary automatically
                 });
 
                 if (response.ok) {
