@@ -8,415 +8,707 @@ from io import BytesIO
 import concurrent.futures
 import urllib.parse
 from datetime import datetime
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 
-# --- Constants ---
-TITLE_SIZE = Pt(54)          # Main Title (Cover)
-SUBTITLE_SIZE = Pt(28)       # Subtitle (Cover)
-SLIDE_HEADING_SIZE = Pt(40)  # Slide Title (Standard: 36-44pt)
-BODY_SIZE_L0 = Pt(24)        # Level 1 Bullets
-BODY_SIZE_L1 = Pt(20)        # Level 2 Bullets
-BODY_SIZE_L2 = Pt(18)        # Level 3 Bullets
-# Layout Constants
-SLIDE_WIDTH = Inches(13.333)
+# --- Layout Constants ---
+SLIDE_WIDTH  = Inches(13.333)
 SLIDE_HEIGHT = Inches(7.5)
-MARGIN_LEFT = Inches(1)
-MARGIN_RIGHT = Inches(1)
-MARGIN_TOP = Inches(0.5) # For Title
-MARGIN_BOTTOM = Inches(0.5)
+MARGIN_LEFT  = Inches(0.9)
+MARGIN_RIGHT = Inches(0.9)
+MARGIN_TOP   = Inches(0.1)
+
+
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+
+def hex_to_rgb(hex_str, default=None):
+    """Convert a hex colour string to RGBColor. Returns *default* on failure."""
+    if not hex_str:
+        return default
+    try:
+        h = str(hex_str).replace("#", "").strip()
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        if len(h) == 6:
+            return RGBColor.from_string(h.upper())
+    except Exception:
+        pass
+    return default
+
 
 def fetch_image(query):
-    """
-    Fetches an image stream for a given query.
-    Returns BytesIO object or None.
-    """
+    """Fetches a placeholder image stream for *query*. Returns BytesIO or None."""
     if not query:
         return None
-        
     try:
         safe_query = urllib.parse.quote(query)
-        # Higher resolution placeholder
-        image_url = f"https://placehold.co/800x600?text={safe_query}"
-        
-        response = requests.get(image_url, timeout=5)
+        url = f"https://placehold.co/800x600?text={safe_query}"
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             return BytesIO(response.content)
     except Exception as e:
-        print(f"Error fetching image for '{query}': {e}")
-    
+        print(f"Image fetch error for '{query}': {e}")
     return None
 
-def apply_slide_footer(slide, slide_number, presentation_title, color_text_light=RGBColor(117, 117, 117)):
-    """Adds a footer with date, title, and slide number."""
-    # Date
-    date_str = datetime.now().strftime("%B %d, %Y")
-    
-    # We can use the slide master placeholders if available, but for robustness
-    # we'll add text boxes to the bottom.
-    
-    # 1. Slide Number (Bottom Right)
-    width = Inches(1)
-    height = Inches(0.5)
-    left = Inches(13.333) - width - Inches(0.2) # Assuming 16:9 aspect ratio standard (13.333 inches wide)
-    top = Inches(7.5) - height # Assuming 7.5 inches height
-    
-    txBox = slide.shapes.add_textbox(left, top, width, height)
-    tf = txBox.text_frame
-    p = tf.paragraphs[0]
-    p.text = str(slide_number)
-    p.font.size = Pt(12)
-    p.font.color.rgb = color_text_light
-    p.alignment = PP_ALIGN.RIGHT
 
-    # 2. Footer Text (Bottom Left) - Title & Date
-    width = Inches(8)
-    left = MARGIN_LEFT
-    
-    txBox2 = slide.shapes.add_textbox(left, top, width, height)
-    tf2 = txBox2.text_frame
-    p2 = tf2.paragraphs[0]
-    p2.text = f"{presentation_title} | {date_str}"
-    p2.font.size = Pt(12)
-    p2.font.color.rgb = color_text_light
-    p2.alignment = PP_ALIGN.LEFT
+# ---------------------------------------------------------------------------
+# Theme registry — matches the 12 templates in slide_templates/
+# ---------------------------------------------------------------------------
+THEME_REGISTRY = {
+    "professional_blue.pptx": {
+        "bg": "#FFFFFF", "surface": "#EBF3FF", "accent": "#1565C0", "text": "#212121",
+    },
+    "executive_dark.pptx": {
+        "bg": "#1A1A2E", "surface": "#16213E", "accent": "#E94560", "text": "#EAEAEA",
+    },
+    "teal_modern.pptx": {
+        "bg": "#F0FDFA", "surface": "#CCFBF1", "accent": "#0D9488", "text": "#134E4A",
+    },
+    "sunset_coral.pptx": {
+        "bg": "#FFF5F5", "surface": "#FED7D7", "accent": "#E53E3E", "text": "#2D3748",
+    },
+    "ocean_blue.pptx": {
+        "bg": "#EFF6FF", "surface": "#DBEAFE", "accent": "#2563EB", "text": "#1E3A8A",
+    },
+    "forest_green.pptx": {
+        "bg": "#F0FDF4", "surface": "#DCFCE7", "accent": "#15803D", "text": "#14532D",
+    },
+    "royal_purple.pptx": {
+        "bg": "#1E1B4B", "surface": "#312E81", "accent": "#818CF8", "text": "#EDE9FE",
+    },
+    "golden_amber.pptx": {
+        "bg": "#FFFBEB", "surface": "#FEF3C7", "accent": "#D97706", "text": "#451A03",
+    },
+    "charcoal_mono.pptx": {
+        "bg": "#18181B", "surface": "#27272A", "accent": "#A1A1AA", "text": "#FAFAFA",
+    },
+    "rose_blush.pptx": {
+        "bg": "#FFF1F2", "surface": "#FFE4E6", "accent": "#E11D48", "text": "#1F2937",
+    },
+    "navy_slate.pptx": {
+        "bg": "#0F172A", "surface": "#1E293B", "accent": "#38BDF8", "text": "#F0F9FF",
+    },
+    "olive_sage.pptx": {
+        "bg": "#FAFAF9", "surface": "#F5F5F4", "accent": "#65A30D", "text": "#1A2E05",
+    },
+    "nebula_glow.pptx": {
+        "bg": "#0D0D15", "surface": "#1A1A2E", "accent": "#7AA2F7", "text": "#E0E0FB",
+    },
+    "retrowave_neon.pptx": {
+        "bg": "#240046", "surface": "#3C096C", "accent": "#FF00FF", "text": "#FFFFFF",
+    },
+    "facet.pptx": {
+        "bg": "#FFFFFF", "surface": "#F0F8F8", "accent": "#008B8B", "text": "#2F4F4F",
+    },
+    "gallery.pptx": {
+        "bg": "#FFFFFF", "surface": "#FDF5E6", "accent": "#A52A2A", "text": "#3E2723",
+    },
+    "integral.pptx": {
+        "bg": "#FFFFFF", "surface": "#F5FFFA", "accent": "#2E8B57", "text": "#1B5E20",
+    },
+    "ion.pptx": {
+        "bg": "#FFFFFF", "surface": "#F8F8FF", "accent": "#6A5ACD", "text": "#1A237E",
+    },
+    "berlin.pptx": {
+        "bg": "#FFFFFF", "surface": "#FFF8DC", "accent": "#D2691E", "text": "#3E2723",
+    },
+}
 
-def create_ppt(data, filename="generated_presentation.pptx", image_mode=None):
-    """
-    Creates a professional PowerPoint presentation.
-    """
-    prs = Presentation()
-    # Set to widescreen 16:9 if not default (pptx default is usually 4:3 or 16:9 depending on template, we assume standard)
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
 
-    presentation_title = data.get("title", "Untitled Presentation")
+def _solid_rect(slide, left, top, width, height, color):
+    """Add a solid filled, borderless rectangle to *slide*."""
+    shp = slide.shapes.add_shape(1, left, top, width, height)
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = color
+    shp.line.fill.background()
+    return shp
 
-    # --- Dynamic Theme Parsing ---
-    theme_data = data.get("theme", {})
-    THEME_FONT = theme_data.get("font", "Calibri")
-    
-    def parse_hex(hex_str, default_color):
-        if not hex_str: return default_color
-        try:
-            h = str(hex_str).replace("#", "").strip()
-            if len(h) == 6:
-                return RGBColor.from_string(h.upper())
-            elif len(h) == 3:
-                return RGBColor.from_string("".join(c*2 for c in h).upper())
-        except Exception:
-            pass
-        return default_color
 
-    COLOR_PRIMARY = parse_hex(theme_data.get("color_primary"), RGBColor(14, 42, 71))
-    COLOR_ACCENT = parse_hex(theme_data.get("color_accent"), RGBColor(0, 150, 136))
-    COLOR_BACKGROUND = parse_hex(theme_data.get("color_background"), RGBColor(250, 250, 250))
-    COLOR_TEXT_MAIN = parse_hex(theme_data.get("color_text_main"), RGBColor(64, 64, 64))
-    COLOR_TEXT_LIGHT = parse_hex(theme_data.get("color_text_light"), RGBColor(117, 117, 117))
+def _push_back(slide, element, index=2):
+    """Move *element* behind existing shapes at z-order *index*."""
+    slide.shapes._spTree.remove(element)
+    slide.shapes._spTree.insert(index, element)
 
-    # --- helper: apply title formatting ---
-    def format_slide_title(shape, text):
-        shape.text = text
-        tf = shape.text_frame
-        tf.vertical_anchor = MSO_ANCHOR.TOP
-        tf.margin_top = 0
-        tf.margin_bottom = 0
-        tf.margin_left = 0
-        tf.margin_right = 0
-        p = tf.paragraphs[0]
-        p.font.bold = True
-        p.font.size = SLIDE_HEADING_SIZE
-        p.font.name = THEME_FONT
-        p.font.color.rgb = COLOR_PRIMARY
-        p.alignment = PP_ALIGN.LEFT
-        
-        # Add a colored accent line under title (simulated with underscores or a shape if we wanted to get fancy)
-        # For now, clean text is better.
 
-    # 1. Title Slide
-    title_slide_layout = prs.slide_layouts[0]
-    slide = prs.slides.add_slide(title_slide_layout)
-    
-    # Set background color
+def _add_chart(slide, chart_data_dict, x, y, w, h):
+    """Adds a chart to the slide based on data dictionary."""
+    try:
+        chart_type_str = chart_data_dict.get("type", "column").lower()
+        title = chart_data_dict.get("title", "")
+        categories = chart_data_dict.get("categories", [])
+        series_list = chart_data_dict.get("series", [])
+
+        chart_data = CategoryChartData()
+        chart_data.categories = categories
+        for s in series_list:
+            chart_data.add_series(s.get("name", ""), s.get("values", []))
+
+        chart_type = XL_CHART_TYPE.COLUMN_CLUSTERED
+        if chart_type_str == "pie":
+            chart_type = XL_CHART_TYPE.PIE
+        elif chart_type_str == "line":
+            chart_type = XL_CHART_TYPE.LINE
+        elif chart_type_str == "bar":
+            chart_type = XL_CHART_TYPE.BAR_CLUSTERED
+
+        chart_shape = slide.shapes.add_chart(
+            chart_type, x, y, w, h, chart_data
+        )
+        if title:
+            chart_shape.chart.has_title = True
+            chart_shape.chart.chart_title.text_frame.text = title
+        return chart_shape
+    except Exception as e:
+        print(f"Error adding chart: {e}")
+        return None
+
+
+def _add_table(slide, table_data_list, x, y, w, h):
+    """Adds a table to the slide based on list of lists."""
+    try:
+        rows = len(table_data_list)
+        cols = len(table_data_list[0]) if rows > 0 else 0
+        if rows == 0 or cols == 0:
+            return None
+
+        table_shape = slide.shapes.add_table(rows, cols, x, y, w, h)
+        table = table_shape.table
+
+        for r_idx, row_data in enumerate(table_data_list):
+            for c_idx, cell_val in enumerate(row_data):
+                cell = table.cell(r_idx, c_idx)
+                cell.text = str(cell_val)
+                # Basic styling for headers
+                if r_idx == 0:
+                    for paragraph in cell.text_frame.paragraphs:
+                        paragraph.font.bold = True
+        return table_shape
+    except Exception as e:
+        print(f"Error adding table: {e}")
+        return None
+
+
+def set_slide_background(slide, color):
+    """Explicitly set the slide background color property."""
     background = slide.background
     fill = background.fill
     fill.solid()
-    fill.fore_color.rgb = COLOR_BACKGROUND
+    fill.fore_color.rgb = color
+
+
+def clear_all_slides(prs):
+    """Remove all slides from the presentation object."""
+    # iterate backwards to avoid index issues
+    xml_slides = prs.slides._sldIdLst
+    for i in range(len(xml_slides) - 1, -1, -1):
+        xml_slides.remove(xml_slides[i])
+
+def get_layout_by_name(prs, name_substring):
+    """Finds a slide layout where the name contains the substring (case-insensitive)."""
+    for layout in prs.slide_layouts:
+        if name_substring.lower() in layout.name.lower():
+            return layout
+    # Fallback to a common index if name is not found, but log it
+    print(f"Warning: Layout with name '{name_substring}' not found. Falling back to index-based selection.")
+    if "title" in name_substring.lower() and "content" in name_substring.lower():
+        return prs.slide_layouts[1]
+    if "two" in name_substring.lower() or "comparison" in name_substring.lower():
+        return prs.slide_layouts[3]
+    return prs.slide_layouts[0]
+
+
+# ---------------------------------------------------------------------------
+# Pagination helper
+# ---------------------------------------------------------------------------
+
+def _paginate_slides(original_slides, image_mode, user_body_size):
+    MAX_HEIGHT_PT    = 380
+    CHARS_FULL       = 65
+    CHARS_HALF       = 32
+    ITEM_SPACING     = {0: 16, 1: 12, 2: 8}
+    FONT_MAP         = {0: user_body_size, 1: max(12, user_body_size - 4), 2: max(10, user_body_size - 6)}
+    is_half          = image_mode in ("manual", "auto")
+    chars_limit      = CHARS_HALF if is_half else CHARS_FULL
+
+    def estimate_h(text, level):
+        if not text:
+            return 0
+        lines   = max(1, (len(text) + chars_limit - 1) // chars_limit)
+        line_h  = FONT_MAP.get(level, 24) * 1.2
+        return lines * line_h + ITEM_SPACING.get(level, 10)
+
+    paginated = []
+    for slide_data in original_slides:
+        content = slide_data.get("content", [])
+        if not content and "bullet_points" in slide_data:
+            content = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
+        if not content:
+            paginated.append(slide_data)
+            continue
+
+        current_items  = []
+        current_height = 0
+        for item in content:
+            h = estimate_h(item.get("text", ""), item.get("level", 0))
+            if current_height + h > MAX_HEIGHT_PT and current_items:
+                chunk = slide_data.copy()
+                chunk["content"] = current_items
+                paginated.append(chunk)
+                current_items  = [item]
+                current_height = h
+            else:
+                current_items.append(item)
+                current_height += h
+
+        if current_items:
+            chunk = slide_data.copy()
+            chunk["content"] = current_items
+            base_title = slide_data.get("heading", "")
+            if paginated and paginated[-1].get("heading", "").replace(" (Cont.)", "") == base_title.replace(" (Cont.)", ""):
+                chunk["heading"] = f"{base_title} (Cont.)"
+                chunk.pop("image_search_query", None)
+            paginated.append(chunk)
+
+    return paginated
+
+
+# ---------------------------------------------------------------------------
+# Main PPT creation function
+# ---------------------------------------------------------------------------
+
+def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
+    """
+    The main driver: takes the JSON data and produces a .pptx file.
+    """
+    print(f"--- DEBUG: ppt_utils.create_ppt called for {filename} ---")
+    design_prefs   = data.get("design_prefs", {})
+    template_name  = design_prefs.get("template", "professional_blue.pptx")
+    template_path  = os.path.join("slide_templates", template_name)
+
+    # --- Load or Create Presentation ---
+    template_path = os.path.join("slide_templates", template_name)
+    if not os.path.exists(template_path):
+        template_path = os.path.join("slide_templates", "professional_blue.pptx")
+
+    try:
+        prs = Presentation(template_path)
+        # CRITICAL: Clear any existing slides from the template to prevent relationship collisions
+        clear_all_slides(prs)
+    except Exception as e:
+        print(f"Error loading template {template_path}: {e}")
+        prs = Presentation()
     
-    title = slide.shapes.title
-    subtitle = slide.placeholders[1]
+    # Always ensure slide dimensions are correct
+    prs.slide_width  = SLIDE_WIDTH
+    prs.slide_height = SLIDE_HEIGHT
 
-    # Main Title Formatting
-    title.text = presentation_title
-    tf = title.text_frame
-    p = tf.paragraphs[0]
-    p.font.bold = True
-    p.font.size = TITLE_SIZE
-    p.font.name = THEME_FONT
-    p.font.color.rgb = COLOR_PRIMARY
-    p.alignment = PP_ALIGN.CENTER
+    W = prs.slide_width
+    H = prs.slide_height
 
-    subtitle.text = "Generated by Gemini AI"
-    sf = subtitle.text_frame
-    sp = sf.paragraphs[0]
-    sp.font.size = SUBTITLE_SIZE
-    sp.font.name = THEME_FONT
-    sp.font.color.rgb = COLOR_ACCENT
-    sp.alignment = PP_ALIGN.CENTER
+    presentation_title = data.get("title", "Untitled Presentation")
 
-    # 2. Pre-fetch Images (Parallel)
-    # ... logic relies on having the final list of slides, so we paginate FIRST.
+    # --- Dynamic font sizes ---
+    user_title_size = design_prefs.get("title_font_size", 40)
+    user_body_size  = design_prefs.get("body_font_size", 24)
 
-    # --- helper: Paginate Slides ---
-    def paginate_slides(original_slides):
-        paginated = []
+    DYN_TITLE_SIZE   = Pt(user_title_size + 14)
+    DYN_SUBTITLE_SIZE = Pt(max(16, user_title_size - 10))
+    DYN_HEADING_SIZE  = Pt(user_title_size)
+    DYN_BODY_L0       = Pt(user_body_size)
+    DYN_BODY_L1       = Pt(max(12, user_body_size - 4))
+    DYN_BODY_L2       = Pt(max(10, user_body_size - 6))
+
+    # --- Resolve colours (theme registry → user overrides) ---
+    registry    = THEME_REGISTRY.get(template_name, THEME_REGISTRY["professional_blue.pptx"])
+    THEME_FONT  = design_prefs.get("font_style", data.get("theme", {}).get("font", "Calibri"))
+
+    C_BG      = hex_to_rgb(registry["bg"],      RGBColor(255, 255, 255))
+    C_SURFACE = hex_to_rgb(registry["surface"],  RGBColor(235, 243, 255))
+    C_ACCENT  = hex_to_rgb(registry["accent"],   RGBColor(21,  101, 192))
+    C_TEXT    = hex_to_rgb(registry["text"],     RGBColor(33,  33,  33))
+
+    # Allow per-field user overrides from the form
+    C_TITLE   = hex_to_rgb(design_prefs.get("title_font_color"),
+                             C_ACCENT)  # default to accent
+    C_BODY    = hex_to_rgb(design_prefs.get("body_font_color"), C_TEXT)
+    C_FOOTER  = RGBColor(
+        min(255, C_TEXT[0] + 60),
+        min(255, C_TEXT[1] + 60),
+        min(255, C_TEXT[2] + 60),
+    )
+
+    # -----------------------------------------------------------------------
+    # apply_title_slide_styling  — split-panel + accents
+    # -----------------------------------------------------------------------
+    def apply_title_slide_styling(slide):
+        set_slide_background(slide, C_BG)
+        bg_shp = _solid_rect(slide, 0, 0, W, H, C_BG)
+        _push_back(slide, bg_shp._element, 2)
+
+        if template_name == "nebula_glow.pptx":
+            # Central floating card (glassish)
+            card_w, card_h = int(W * 0.7), int(H * 0.6)
+            card = _solid_rect(slide, (W-card_w)//2, (H-card_h)//2, card_w, card_h, C_SURFACE)
+            try:
+                card.fill.fore_color.brightness = 0.1
+            except: pass
+            _push_back(slide, card._element, 3)
+            # Corner accents
+            sz = Inches(1.5)
+            _push_back(slide, _solid_rect(slide, 0, 0, sz, sz, C_ACCENT)._element, 4)
+            _push_back(slide, _solid_rect(slide, W-sz, H-sz, sz, sz, C_ACCENT)._element, 4)
         
-        # Height constants (approximate based on 7.5" total height)
-        # Top margin ~1.5" (Title) + Bottom margin ~0.5" (Footer) = ~2.0" used
-        # Usable height for body = 7.5 - 2.0 = 5.5 inches
-        # Let's use points. 1 inch = 72 pt. 5.5 inches = 396 pt.
-        # Reduced font sizes mean we can fit more logically, but let's be strict to prevent footer spill.
-        # Height of slide: 7.5". Footer starts at ~7.0". Body starts at ~1.5". Max height = 5.5" = 396pt.
-        MAX_HEIGHT_PT = 380
-        
-        # Character widths (approximate for Calibri)
-        # Full width (no image): ~12 inches usable width
-        # Half width (with image): ~6 inches usable width
-        # Average char width for body text (approx) -> distinct from line counting
-        # simple heuristic: chars_per_line = usable_width_inches * chars_per_inch
-        # chars_per_inch ~ 12 (for 12pt), for 28pt it's much less.
-        # Let's keep using char counts for wrapping estimation:
-        CHARS_PER_LINE_FULL = 60 # Approx for wide layout
-        CHARS_PER_LINE_HALF = 30 # Approx for two-column layout (narrower than before to be safe)
+        elif template_name == "retrowave_neon.pptx":
+            # Grid lines at bottom
+            grid_h = int(H * 0.3)
+            grid = _solid_rect(slide, 0, H-grid_h, W, grid_h, C_SURFACE)
+            _push_back(slide, grid._element, 3)
+            # Accent line (horizon)
+            _push_back(slide, _solid_rect(slide, 0, H-grid_h-Inches(0.05), W, Inches(0.05), C_ACCENT)._element, 4)
+            # Decorative sun (square proxy for now as add_shape(1) is rect)
+            sun_sz = Inches(3)
+            sun = _solid_rect(slide, (W-sun_sz)//2, Inches(1), sun_sz, sun_sz, C_ACCENT)
+            _push_back(slide, sun._element, 3)
 
-        # Content constants
-        # Leading/Margins per item (space before/after)
-        ITEM_SPACING_PT = {
-            0: 16, # 10 before + 6 after
-            1: 12, # 6 before + 6 after
-            2: 8   # 4 before + 4 after
-        }
-        FONT_SIZE_PT = {
-            0: 24,
-            1: 20,
-            2: 18
-        }
+        elif template_name == "facet.pptx":
+            # Triangular shape in top left and bottom right
+            tri_sz = Inches(2)
+            _push_back(slide, _solid_rect(slide, 0, 0, tri_sz, tri_sz, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, W-tri_sz, H-tri_sz, tri_sz, tri_sz, C_ACCENT)._element, 3)
+            # Vertical line
+            _push_back(slide, _solid_rect(slide, Inches(0.5), 0, Inches(0.05), H, C_SURFACE)._element, 4)
 
-        for slide_data in original_slides:
-            content_items = slide_data.get("content", [])
-            # Handle bullet_points fallback if present
-            if not content_items and "bullet_points" in slide_data:
-                content_items = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
-                
-            if not content_items:
-                paginated.append(slide_data)
-                continue
+        elif template_name == "gallery.pptx":
+            # Canvas-like border
+            border_w = Inches(0.4)
+            _push_back(slide, _solid_rect(slide, 0, 0, W, border_w, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, 0, H-border_w, W, border_w, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, 0, 0, border_w, H, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, W-border_w, 0, border_w, H, C_ACCENT)._element, 3)
 
-            # Determine layout width for estimation using outer scope image_mode
-            is_half_width = image_mode in ['manual', 'auto']
-            chars_limit = CHARS_PER_LINE_HALF if is_half_width else CHARS_PER_LINE_FULL
+        elif template_name == "integral.pptx":
+            # Strong vertical band on the left
+            band_w = Inches(1.2)
+            _push_back(slide, _solid_rect(slide, 0, 0, band_w, H, C_ACCENT)._element, 3)
+            # Thin horizontal line near top
+            _push_back(slide, _solid_rect(slide, 0, Inches(1.5), W, Inches(0.05), C_SURFACE)._element, 4)
 
-            current_slide_items = []
-            current_height = 0
-            
-            def estimate_text_height(text, level, width_chars):
-                if not text: return 0
-                lines = max(1, len(text) // width_chars + (1 if len(text) % width_chars > 0 else 0))
-                # Height = (lines * font_size * line_height_factor) + spacing
-                # Default line height is ~1.2
-                line_height = FONT_SIZE_PT.get(level, 24) * 1.2
-                total_text_height = lines * line_height
-                spacing = ITEM_SPACING_PT.get(level, 10)
-                return total_text_height + spacing
+        elif template_name == "ion.pptx":
+            # Minimalist horizontal bars
+            bar_h = Inches(0.3)
+            _push_back(slide, _solid_rect(slide, 0, H-bar_h, W, bar_h, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, Inches(1), Inches(1), Inches(4), Inches(0.1), C_ACCENT)._element, 4)
 
-            for item in content_items:
-                text = item.get("text", "")
-                level = item.get("level", 0)
-                
-                item_height = estimate_text_height(text, level, chars_limit)
-                
-                # Check if adding this item exceeds max height
-                # If it's the FIRST item, we must add it even if it's huge (or it will loop forever)
-                if current_height + item_height > MAX_HEIGHT_PT and current_slide_items:
-                    # Push current slide
-                    new_slide = slide_data.copy()
-                    new_slide["content"] = current_slide_items
-                    paginated.append(new_slide)
-                    
-                    # Reset for next slide
-                    current_slide_items = [item]
-                    current_height = item_height
-                else:
-                    current_slide_items.append(item)
-                    current_height += item_height
-            
-            # Append the last chunk
-            if current_slide_items:
-                new_slide = slide_data.copy()
-                new_slide["content"] = current_slide_items
-                # If we split this slide (i.e. paginated had entries from this slide loop already),
-                # we might want to mark continuation.
-                
-                base_title = slide_data.get("heading", "")
-                
-                # Check if we already added a part of this slide
-                if len(paginated) > 0 and paginated[-1].get("heading").replace(" (Cont.)", "") == base_title.replace(" (Cont.)", ""):
-                     new_slide["heading"] = f"{base_title} (Cont.)"
-                     # Remove image requirement for continuation slides to save space/redundancy
-                     if "image_search_query" in new_slide:
-                         del new_slide["image_search_query"]
+        elif template_name == "berlin.pptx":
+            # Solid block header and footer
+            header_h = Inches(1)
+            _push_back(slide, _solid_rect(slide, 0, 0, W, header_h, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, 0, H-Inches(0.5), W, Inches(0.5), C_SURFACE)._element, 4)
+            # Accent square
+            _push_back(slide, _solid_rect(slide, Inches(0.5), Inches(0.5), Inches(1), Inches(1), C_BG)._element, 5)
 
-                paginated.append(new_slide)
-
-        return paginated
-
-    # 3. Process Slides (Paginate & Fetch)
-    
-    # Run pagination
-    final_slides_data = paginate_slides(data.get("slides", []))
-    
-    image_map = {}
-    
-    if image_mode == 'auto':
-        print(f"Fetching images for {len(final_slides_data)} slides in parallel...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            # Prepare queries
-            future_to_index = {}
-            for i, slide_data in enumerate(final_slides_data):
-                query = slide_data.get("image_search_query", slide_data.get("heading", ""))
-                # Only fetch if we have a query
-                if query:
-                     future = executor.submit(fetch_image, query)
-                     future_to_index[future] = i
-            
-            for future in concurrent.futures.as_completed(future_to_index):
-                idx = future_to_index[future]
-                try:
-                    image_stream = future.result()
-                    if image_stream:
-                        image_map[idx] = image_stream
-                except Exception as exc:
-                    print(f"Image fetch generated an exception for slide {idx}: {exc}")
-
-    # 4. Content Slides Generation
-    for i, slide_data in enumerate(final_slides_data):
-        
-        use_image_layout = image_mode in ['manual', 'auto']
-        
-        # Use appropriate layouts. 
-        # Layout 1 is "Title and Content"
-        # Layout 3 is "Two Content" (Side by side)
-        if use_image_layout:
-             slide_layout = prs.slide_layouts[3] 
         else:
-             slide_layout = prs.slide_layouts[1] 
+            # Default logic (Original)
+            band_w = int(W * 0.38)
+            band   = _solid_rect(slide, 0, 0, band_w, H, C_ACCENT)
+            _push_back(slide, band._element, 3)
+            corner_sz = Inches(1.8)
+            corner    = _solid_rect(slide, W - corner_sz, 0, corner_sz, corner_sz, C_ACCENT)
+            try:
+                corner.fill.fore_color.brightness = 0.25
+            except: pass
+            _push_back(slide, corner._element, 3)
+            edge_h = Inches(0.05)
+            edge   = _solid_rect(slide, 0, H - edge_h, W, edge_h, C_ACCENT)
+            _push_back(slide, edge._element, 3)
 
-        slide = prs.slides.add_slide(slide_layout)
+    def apply_content_slide_styling(slide):
+        set_slide_background(slide, C_BG)
+        bg_shp = _solid_rect(slide, 0, 0, W, H, C_BG)
+        _push_back(slide, bg_shp._element, 2)
+
+        if template_name == "nebula_glow.pptx":
+            # Top-right glowing blob
+            blob_sz = Inches(2.5)
+            blob = _solid_rect(slide, W - blob_sz, 0, blob_sz, blob_sz, C_ACCENT)
+            _push_back(slide, blob._element, 3)
+            # Thin bottom accent
+            _push_back(slide, _solid_rect(slide, Inches(0.5), H-Inches(0.4), W-Inches(1), Inches(0.03), C_ACCENT)._element, 3)
         
-        # Apply standard background
-        background = slide.background
-        fill = background.fill
-        fill.solid()
-        fill.fore_color.rgb = COLOR_BACKGROUND
+        elif template_name == "retrowave_neon.pptx":
+            # Sidebar accent
+            _push_back(slide, _solid_rect(slide, 0, 0, Inches(0.2), H, C_ACCENT)._element, 3)
+            # Header block
+            _push_back(slide, _solid_rect(slide, Inches(0.2), 0, W-Inches(0.2), Inches(1.2), C_SURFACE)._element, 3)
+        
+        elif template_name == "facet.pptx":
+            # Top accent bar
+            _push_back(slide, _solid_rect(slide, 0, 0, W, Inches(0.15), C_ACCENT)._element, 3)
+            # Subtle left indicator
+            _push_back(slide, _solid_rect(slide, 0, 0, Inches(0.08), H, C_SURFACE)._element, 3)
+
+        elif template_name == "gallery.pptx":
+            # Minimal thin frame
+            frame_sz = Inches(0.05)
+            _push_back(slide, _solid_rect(slide, 0, 0, W, frame_sz, C_ACCENT)._element, 3)
+            _push_back(slide, _solid_rect(slide, 0, H-frame_sz, W, frame_sz, C_ACCENT)._element, 3)
+
+        elif template_name == "integral.pptx":
+            # Left vertical marker
+            _push_back(slide, _solid_rect(slide, 0, 0, Inches(0.6), H, C_ACCENT)._element, 3)
+
+        elif template_name == "ion.pptx":
+            # Bottom accent line
+            _push_back(slide, _solid_rect(slide, 0, H-Inches(0.12), W, Inches(0.12), C_ACCENT)._element, 3)
+
+        elif template_name == "berlin.pptx":
+            # Header strip
+            _push_back(slide, _solid_rect(slide, 0, 0, W, Inches(1.15), C_SURFACE)._element, 3)
+            _push_back(slide, _solid_rect(slide, 0, Inches(1.15), W, Inches(0.04), C_ACCENT)._element, 4)
+
+        else:
+            # Default logic (Original)
+            bar_w = Inches(0.12)
+            bar   = _solid_rect(slide, 0, 0, bar_w, H, C_ACCENT)
+            _push_back(slide, bar._element, 3)
+            strip_h = Inches(1.1)
+            strip   = _solid_rect(slide, bar_w, 0, W - bar_w, strip_h, C_SURFACE)
+            _push_back(slide, strip._element, 3)
+            uline_h = Inches(0.045)
+            uline   = _solid_rect(slide, bar_w, strip_h - uline_h, W - bar_w, uline_h, C_ACCENT)
+            _push_back(slide, uline._element, 4)
+            footer_y = H - Inches(0.52)
+            footer_line = _solid_rect(slide, bar_w + Inches(0.3), footer_y, W - bar_w - Inches(0.6), Inches(0.022), C_ACCENT)
+            _push_back(slide, footer_line._element, 4)
+
+    # -----------------------------------------------------------------------
+    # Footer text
+    # -----------------------------------------------------------------------
+    def add_footer(slide, slide_number):
+        date_str = datetime.now().strftime("%B %d, %Y")
+        # Slide number — bottom right
+        sn_w = Inches(1)
+        sn_h = Inches(0.4)
+        sn_l = W - sn_w - Inches(0.25)
+        sn_t = H - sn_h - Inches(0.07)
+        tb   = slide.shapes.add_textbox(sn_l, sn_t, sn_w, sn_h)
+        p    = tb.text_frame.paragraphs[0]
+        p.text              = str(slide_number)
+        p.font.size         = Pt(11)
+        p.font.color.rgb    = C_FOOTER
+        p.alignment         = PP_ALIGN.RIGHT
+
+        # Footer label — bottom left
+        fl_w = Inches(9)
+        fl_l = Inches(0.5)
+        tb2  = slide.shapes.add_textbox(fl_l, sn_t, fl_w, sn_h)
+        p2   = tb2.text_frame.paragraphs[0]
+        p2.text              = f"{presentation_title}  |  {date_str}"
+        p2.font.size         = Pt(11)
+        p2.font.color.rgb    = C_FOOTER
+        p2.alignment         = PP_ALIGN.LEFT
+
+    # -----------------------------------------------------------------------
+    # SLIDE 1 — Cover / Title Slide
+    # -----------------------------------------------------------------------
+    title_layout = get_layout_by_name(prs, "Title Slide")
+
+    cover = prs.slides.add_slide(title_layout)
+    apply_title_slide_styling(cover)
+
+    # Title text (right panel — place over the white/bg area)
+    band_w_val = int(W * 0.38)
+    right_x    = band_w_val + Inches(0.5)
+    right_w    = W - band_w_val - Inches(1)
+
+    title_ph = cover.shapes.title
+    title_ph.left   = right_x
+    title_ph.top    = int(H * 0.28)
+    title_ph.width  = right_w
+    title_ph.height = Inches(2.2)
+    title_ph.text   = presentation_title
+    tf = title_ph.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.font.bold      = True
+    p.font.size      = DYN_TITLE_SIZE
+    p.font.name      = THEME_FONT
+    p.font.color.rgb = C_TITLE
+    p.alignment      = PP_ALIGN.LEFT
+
+    # Subtitle
+    try:
+        sub_ph = cover.placeholders[1]
+        sub_ph.left   = right_x
+        sub_ph.top    = int(H * 0.28) + Inches(2.3)
+        sub_ph.width  = right_w
+        sub_ph.height = Inches(0.8)
+        sub_ph.text   = "Generated by Gemini AI"
+        sp = sub_ph.text_frame.paragraphs[0]
+        sp.font.size         = DYN_SUBTITLE_SIZE
+        sp.font.name         = THEME_FONT
+        sp.font.color.rgb    = C_BODY
+        sp.alignment         = PP_ALIGN.LEFT
+    except Exception:
+        pass
+
+    # -----------------------------------------------------------------------
+    # Content Slides
+    # -----------------------------------------------------------------------
+    final_slides = _paginate_slides(
+        data.get("slides", []), image_mode, user_body_size
+    )
+
+    # Pre-fetch images in parallel if auto mode
+    image_map = {}
+    if image_mode == "auto":
+        print(f"Fetching images for {len(final_slides)} slides...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_i = {}
+            for i, sd in enumerate(final_slides):
+                query = sd.get("image_search_query") or sd.get("heading", "")
+                if query:
+                    future_to_i[executor.submit(fetch_image, query)] = i
+            for future in concurrent.futures.as_completed(future_to_i):
+                idx = future_to_i[future]
+                try:
+                    stream = future.result()
+                    if stream:
+                        image_map[idx] = stream
+                except Exception as exc:
+                    print(f"Image error slide {idx}: {exc}")
+
+    # Choose layout
+    use_image = image_mode in ("manual", "auto")
+
+    for i, slide_data in enumerate(final_slides):
+        if use_image:
+            layout = get_layout_by_name(prs, "Two Content")
+        else:
+            layout = get_layout_by_name(prs, "Title and Content")
+        slide  = prs.slides.add_slide(layout)
+        apply_content_slide_styling(slide)
 
         shapes = slide.shapes
+        BAR_W  = Inches(0.12)
+        STRIP_H = Inches(1.1)
 
-        # Title
-        title_shape = shapes.title
-        format_slide_title(title_shape, slide_data.get("heading", "No Title"))
-        
-        # Enforce Title Alignment & Size
-        title_shape.left = MARGIN_LEFT
-        title_shape.top = MARGIN_TOP
-        title_shape.width = SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
-        title_shape.height = Inches(0.6)
+        # --- Title ---
+        title_shp        = shapes.title
+        title_shp.left   = BAR_W + Inches(0.3)
+        title_shp.top    = Inches(0.12)
+        title_shp.height = Inches(0.85)
+        title_shp.width  = (int((W - BAR_W - Inches(0.4)) * 0.55)
+                             if use_image else int(W - BAR_W - Inches(0.7)))
 
-        # Footer
-        apply_slide_footer(slide, i + 1, presentation_title, COLOR_TEXT_LIGHT)
-
-        # Body (Bullet points)
-        # In Layout 3 (Two Content), placeholder[1] is Left, [2] is Right.
-        # In Layout 1 (Title/Content), placeholder[1] is the main body.
-        
-        body_shape = shapes.placeholders[1]
-        
-        # Enforce Body Alignment & Size
-        body_shape.left = MARGIN_LEFT
-        body_shape.top = MARGIN_TOP + Inches(0.7) # Tighter gap below title
-        
-        if use_image_layout:
-             # Leaves a 10% gap in the middle
-             body_shape.width = int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.45)
-        else:
-             body_shape.width = SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
-             
-        # Stop explicitly at 6.6 inches down so it NEVER hits the footer (which is at 7.0)
-        body_shape.height = Inches(6.6) - body_shape.top
-        
-        tf = body_shape.text_frame
-        tf.clear() 
+        title_shp.text = slide_data.get("heading", "Slide")
+        tf = title_shp.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.font.bold      = True
+        p.font.size      = DYN_HEADING_SIZE
+        p.font.name      = THEME_FONT
+        p.font.color.rgb = C_TITLE
+        p.alignment      = PP_ALIGN.LEFT
 
-        # Content 
+        # --- Footer ---
+        add_footer(slide, i + 1)
+
+        # --- Body ---
+        body_shp        = shapes.placeholders[1]
+        body_shp.left   = BAR_W + Inches(0.3)
+        body_shp.top    = STRIP_H + Inches(0.15)
+
+        if use_image:
+            body_shp.width = int((W - BAR_W - Inches(0.6)) * 0.48)
+        else:
+            body_shp.width = W - BAR_W - Inches(0.7)
+
+        body_shp.height = H - body_shp.top - Inches(0.6)
+
+        tf2 = body_shp.text_frame
+        tf2.clear()
+        tf2.word_wrap = True
+
         content = slide_data.get("content", [])
         if not content and "bullet_points" in slide_data:
             content = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
 
-        if content:
-            for item in content:
-                text = item.get("text", "")
-                level = item.get("level", 0)
-                
-                p = tf.add_paragraph()
-                p.text = text
-                p.level = level
-                p.font.name = THEME_FONT
-                p.alignment = PP_ALIGN.LEFT
-                
-                # Pro Typography & Hierarchy
-                if level == 0:
-                    p.font.size = BODY_SIZE_L0 
-                    p.font.bold = False 
-                    p.font.color.rgb = COLOR_TEXT_MAIN
-                    p.space_before = Pt(4) 
-                    p.space_after = Pt(4)
-                elif level == 1:
-                    p.font.size = BODY_SIZE_L1
-                    p.font.color.rgb = COLOR_TEXT_MAIN # Use main color instead of light for better visibility
-                    p.space_before = Pt(4)
-                    p.space_after = Pt(2)
-                else:
-                    p.font.size = BODY_SIZE_L2
-                    p.font.color.rgb = COLOR_TEXT_MAIN # Use main color instead of light for better visibility
-                    p.space_before = Pt(4)
-                    p.space_after = Pt(2)
+        for item in content:
+            text  = item.get("text", "")
+            level = item.get("level", 0)
 
-        # Image Handling
-        # If Two Content layout, image goes to placeholder[2]
-        if use_image_layout and image_mode == 'auto':
-            if i in image_map:
-                try:
-                    # Fix overlap: Place image placeholder on the right side
-                    img_left = MARGIN_LEFT + int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.55) 
-                    img_top = body_shape.top
-                    img_width = int((SLIDE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT) * 0.45)
-                    img_height = body_shape.height
-                    
-                    image_stream = image_map[i]
-                    image_stream.seek(0)
-                    
-                    slide.shapes.add_picture(image_stream, img_left, img_top, img_width, img_height)
+            para = tf2.add_paragraph()
+            para.text  = text
+            para.level = level
+            para.font.name = THEME_FONT
+            para.alignment = PP_ALIGN.LEFT
 
-                except Exception as e:
-                    print(f"Error inserting image for slide {i}: {e}")
-            
-        # Cleanup: Move unused generic placeholders off-screen if we manipulated layouts.
-        # **Crucial**: We MUST NOT delete them (.remove(element)). Deleting placeholders on Two Content layouts
-        # forces PowerPoint to auto-expand the remaining text box to 100% width, causing images to overlap the text!
-        if use_image_layout and image_mode == 'auto':
+            if level == 0:
+                para.font.size      = DYN_BODY_L0
+                para.font.bold      = False
+                para.font.color.rgb = C_BODY
+                para.space_before   = Pt(6)
+                para.space_after    = Pt(4)
+            elif level == 1:
+                para.font.size      = DYN_BODY_L1
+                para.font.bold      = False
+                para.font.color.rgb = C_BODY
+                para.space_before   = Pt(4)
+                para.space_after    = Pt(2)
+            else:
+                para.font.size      = DYN_BODY_L2
+                para.font.bold      = False
+                para.font.color.rgb = C_BODY
+                para.space_before   = Pt(2)
+                para.space_after    = Pt(2)
+
+        # --- Image (auto mode) ---
+        if use_image and image_mode == "auto" and i in image_map:
+            try:
+                img_l = body_shp.left + body_shp.width + Inches(0.25)
+                img_t = body_shp.top
+                img_w = W - img_l - Inches(0.3)
+                img_h = body_shp.height
+
+                stream = image_map[i]
+                stream.seek(0)
+                pic = slide.shapes.add_picture(stream, img_l, img_t)
+
+                ow, oh   = pic.width, pic.height
+                ratio    = min(img_w / ow, img_h / oh)
+                pic.width  = int(ow * ratio)
+                pic.height = int(oh * ratio)
+                pic.left   = img_l + (img_w - pic.width) // 2
+                pic.top    = img_t + (img_h - pic.height) // 2
+            except Exception as e:
+                print(f"Image insert error slide {i}: {e}")
+
+        # --- Chart or Table ---
+        if slide_data.get("chart"):
+            c_x = body_shp.left + body_shp.width + Inches(0.2) if use_image else body_shp.left + Inches(0.5)
+            c_y = body_shp.top
+            c_w = W - c_x - Inches(0.5)
+            c_h = body_shp.height
+            _add_chart(slide, slide_data["chart"], c_x, c_y, c_w, c_h)
+
+        elif slide_data.get("table"):
+            t_x = body_shp.left + body_shp.width + Inches(0.2) if use_image else body_shp.left + Inches(0.5)
+            t_y = body_shp.top
+            t_w = W - t_x - Inches(0.5)
+            t_h = body_shp.height
+            _add_table(slide, slide_data["table"], t_x, t_y, t_w, t_h)
+
+        # Move off-screen any unused layout placeholders (prevents auto-resize)
+        if use_image:
             for ph in slide.shapes.placeholders:
-                if ph.placeholder_format.idx not in [0, 1]:  # Keep only Title (0) and Body (1)
-                    ph.left = Inches(-20) # Move far off-screen instead of deleting
+                if ph.placeholder_format.idx not in (0, 1):
+                    ph.left = Inches(-20)
 
-    # Ensure output directory exists
+    # Save
     output_path = os.path.abspath(filename)
     prs.save(output_path)
     return output_path

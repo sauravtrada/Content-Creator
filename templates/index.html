@@ -4,292 +4,1090 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini PPT Generator</title>
+    <title>Gemini AI | Presentation Studio</title>
+    <!-- Modern Typography & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #818CF8;
+            --secondary: #10B981;
+            --bg-dark: #0F172A;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --text-main: #F8FAFC;
+            --text-dim: #94A3B8;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f4f9;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            color: var(--text-main);
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
         }
 
         .container {
-            background-color: #fff;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2.5rem;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
             width: 100%;
-            max-width: 400px;
+            max-width: 600px;
             text-align: center;
+            position: relative;
+            animation: containerEntry 0.6s ease-out;
         }
 
-        h1 {
-            color: #333;
+        @keyframes containerEntry {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Hero Header */
+        header {
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+            background: linear-gradient(to right, #fff, var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-dim);
+            font-size: 1.1rem;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2.5rem;
+            position: relative;
+        }
+
+        .progress-container::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: 1;
+        }
+
+        .progress-fill {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            height: 2px;
+            background: var(--primary);
+            z-index: 2;
+            transition: width 0.4s ease;
+            width: 0%;
+        }
+
+        .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg-dark);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            position: relative;
+            z-index: 3;
+            transition: var(--transition);
+        }
+
+        .step-dot.active {
+            border-color: var(--primary);
+            color: #fff;
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        .step-dot.completed {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        /* Wizard Steps */
+        .step-content {
+            display: none;
+            text-align: left;
+            animation: stepEntry 0.4s ease-out;
+        }
+
+        @keyframes stepEntry {
+            from { opacity: 0; transform: translateX(10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .step-content.active {
+            display: block;
+        }
+
+        .step-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-title i {
+            color: var(--primary-light);
+        }
+
+        /* Source Cards */
+        .source-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
             margin-bottom: 1.5rem;
         }
 
-        input[type="text"] {
+        .source-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.2rem;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .source-card i {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+
+        .source-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary-light);
+        }
+
+        .source-card.selected {
+            background: rgba(79, 70, 229, 0.15);
+            border-color: var(--primary);
+            box-shadow: inset 0 0 10px rgba(79, 70, 229, 0.2);
+        }
+
+        /* Form Inputs */
+        .label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input[type="text"], 
+        input[type="number"], 
+        input[type="url"], 
+        select, 
+        textarea {
             width: 100%;
-            padding: 10px;
-            margin-bottom: 1rem;
-            border: 1px solid #ddd;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+            transition: var(--transition);
+            margin-bottom: 1.2rem;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+
+        /* Theme Grid */
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 6px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) transparent;
+        }
+
+        .theme-grid::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .theme-grid::-webkit-scrollbar-thumb {
+            background-color: var(--primary);
+            border-radius: 20px;
+        }
+
+        .theme-card {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .theme-card:hover {
+            border-color: rgba(255, 255, 255, 0.35);
+            transform: translateY(-2px);
+        }
+
+        .theme-card.selected {
+            border-color: var(--primary);
+            background: rgba(79, 70, 229, 0.15);
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+
+        .theme-preview {
+            height: 80px;
+            border-radius: 7px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            font-weight: 700;
+            font-size: 1.3rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.12);
+        }
+
+        /* Left accent band */
+        .preview-band {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 14px;
+        }
+
+        /* Title strip at top */
+        .preview-strip {
+            position: absolute;
+            top: 0;
+            left: 14px;
+            right: 0;
+            height: 22px;
+            opacity: 0.55;
+        }
+
+        /* Accent underline below strip */
+        .preview-underline {
+            position: absolute;
+            top: 22px;
+            left: 14px;
+            right: 0;
+            height: 3px;
+        }
+
+        /* 3 mock body lines */
+        .preview-lines {
+            position: absolute;
+            left: 22px;
+            top: 34px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .preview-line {
+            height: 5px;
+            border-radius: 3px;
+            opacity: 0.45;
+        }
+
+        .preview-content {
+            z-index: 1;
+            font-size: 0.8rem;
+        }
+
+        .theme-name {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .theme-badge {
+            display: inline-block;
+            font-size: 0.62rem;
+            padding: 1px 5px;
             border-radius: 4px;
-            box-sizing: border-box;
-            /* Ensures padding doesn't affect width */
+            margin-bottom: 3px;
+            opacity: 0.75;
+        }
+
+        @media (max-width: 480px) {
+            .theme-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* Action Buttons */
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 2rem;
         }
 
         button {
-            background-color: #007bff;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
+            padding: 14px 24px;
+            border-radius: 14px;
+            font-weight: 600;
             cursor: pointer;
-            font-size: 1rem;
-            width: 100%;
+            transition: var(--transition);
+            border: none;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        button:hover {
-            background-color: #0056b3;
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            flex: 2;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            flex: 1;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
         }
 
         button:disabled {
-            background-color: #cccccc;
+            opacity: 0.5;
             cursor: not-allowed;
+            transform: none !important;
         }
 
+        /* Status & Feedback */
         #status {
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+            padding: 12px;
+            border-radius: 12px;
             font-size: 0.9rem;
-            color: #666;
+            color: var(--text-dim);
+            background: rgba(0, 0, 0, 0.2);
+            display: none;
         }
 
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007bff;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 8px;
-            vertical-align: middle;
+        .loading-steps {
+            text-align: left;
+            margin-top: 1rem;
         }
 
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
+        .l-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            opacity: 0.5;
+            transition: var(--transition);
+        }
 
-            100% {
-                transform: rotate(360deg);
-            }
+        .l-step.active {
+            opacity: 1;
+            color: var(--primary-light);
+        }
+
+        .l-step.done {
+            opacity: 0.8;
+            color: var(--secondary);
+        }
+
+        .l-step i {
+            width: 16px;
+        }
+
+        /* Results */
+        #results {
+            margin-top: 2rem;
+            animation: containerEntry 0.5s ease;
+        }
+
+        .success-box {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 24px;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        .success-icon {
+            font-size: 3rem;
+            color: var(--secondary);
+            margin-bottom: 1rem;
+        }
+
+        .download-btn {
+            background: var(--secondary);
+            color: #fff;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            margin-top: 1.2rem;
+            transition: var(--transition);
+        }
+
+        .download-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+
+        @media (max-width: 480px) {
+            .container { padding: 1.5rem; }
+            .source-grid { grid-template-columns: 1fr; }
+            .theme-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1>PPT Generator</h1>
+        <header>
+            <h1>Gemini Studio</h1>
+            <p>Craft beautiful presentations in seconds.</p>
+        </header>
 
-        <div id="generateSection">
-            <div style="text-align: left; margin-bottom: 1rem;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Source Type</label>
-                <select id="sourceType" onchange="toggleSourceInputs()"
-                    style="width: 100%; padding: 11px; border: 1px solid #ddd; border-radius: 4px; background: white;">
-                    <option value="topic_only">Topic Only (No Reference Document)</option>
-                    <option value="pdf">PDF Upload</option>
-                    <option value="url">Web URL</option>
-                    <option value="text">Raw Text</option>
-                </select>
-            </div>
+        <div class="progress-container">
+            <div class="progress-fill" id="progressFill"></div>
+            <div class="step-dot active" data-step="1">1</div>
+            <div class="step-dot" data-step="2">2</div>
+            <div class="step-dot" data-step="3">3</div>
+            <div class="step-dot" data-step="4">4</div>
+        </div>
 
-            <div style="text-align: left; margin-bottom: 1rem;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Topic (Required)</label>
-                <input type="text" id="topicInput" placeholder="e.g., Quantum Computing">
-            </div>
-
-            <!-- Dynamic Source Inputs -->
-            <div id="pdfInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Upload PDF</label>
-                <input type="file" id="pdfFile" accept="application/pdf" style="width: 100%;">
-            </div>
-
-            <div id="urlInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Website URL</label>
-                <input type="url" id="urlInput" placeholder="https://example.com/article" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-
-            <div id="textInputGroup" style="display: none; text-align: left; margin-bottom: 1rem; padding: 10px; background: #e9ecef; border-radius: 4px;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Raw Text</label>
-                <textarea id="rawTextInput" placeholder="Paste document text here..." rows="4" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; box-sizing: border-box;"></textarea>
-            </div>
-
-            <div
-                style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 5px; text-align: left;">
-                <div>
-                    <label style="font-weight: bold; margin-bottom: 5px; display: block;">Number of Slides</label>
-                    <input type="number" id="numSlides" value="5" min="1" max="20"
-                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+        <div id="wizard">
+            <!-- STEP 1: SOURCE -->
+            <div class="step-content active" id="step1">
+                <div class="step-title"><i class="fa-solid fa-database"></i> Choose Your Source</div>
+                
+                <div class="source-grid">
+                    <div class="source-card selected" onclick="selectSource('topic_only', this)">
+                        <i class="fa-solid fa-lightbulb"></i>
+                        <span class="theme-name">Topic Only</span>
+                    </div>
+                    <div class="source-card" onclick="selectSource('pdf', this)">
+                        <i class="fa-solid fa-file-pdf"></i>
+                        <span class="theme-name">PDF Upload</span>
+                    </div>
+                    <div class="source-card" onclick="selectSource('url', this)">
+                        <i class="fa-solid fa-globe"></i>
+                        <span class="theme-name">Website URL</span>
+                    </div>
+                    <div class="source-card" onclick="selectSource('text', this)">
+                        <i class="fa-solid fa-align-left"></i>
+                        <span class="theme-name">Raw Text</span>
+                    </div>
+                    <div class="source-card" onclick="selectSource('pptx_import', this)">
+                        <i class="fa-solid fa-file-powerpoint"></i>
+                        <span class="theme-name">Import PPTX</span>
+                    </div>
                 </div>
-                <div>
-                    <label style="font-weight: bold; margin-bottom: 5px; display: block;">Tone</label>
-                    <select id="toneInput"
-                        style="width: 100%; padding: 11px; border: 1px solid #ddd; border-radius: 4px; background: white;">
-                        <option value="Professional">Professional</option>
-                        <option value="Funny">Funny</option>
-                        <option value="Educational">Educational</option>
-                        <option value="Persuasive">Persuasive</option>
-                        <option value="Inspirational">Inspirational</option>
+
+                <input type="hidden" id="sourceType" value="topic_only">
+
+                <div id="topicInputContainer">
+                    <label class="label">Primary Topic</label>
+                    <input type="text" id="topicInput" placeholder="e.g., The Future of Space Exploration">
+                </div>
+
+                <div id="sourceDetails">
+                    <!-- Dynamic inputs go here -->
+                    <div id="pdfGroup" style="display: none;">
+                        <label class="label">Select PDF Document</label>
+                        <input type="file" id="pdfFile" accept="application/pdf">
+                    </div>
+                    <div id="urlGroup" style="display: none;">
+                        <label class="label">Reference URL</label>
+                        <input type="url" id="urlInput" placeholder="https://example.com/article">
+                    </div>
+                    <div id="textGroup" style="display: none;">
+                        <label class="label">Paste Reference Content</label>
+                        <textarea id="rawTextInput" placeholder="Paste text here..." rows="4"></textarea>
+                    </div>
+                    <div id="pptxGroup" style="display: none;">
+                        <label class="label">Select Existing Presentation</label>
+                        <input type="file" id="pptxFile" accept=".pptx">
+                        <button class="btn-secondary" style="margin-top: 10px; width: 100%;" onclick="importExistingPPT()">
+                            <i class="fa-solid fa-file-import"></i> Parse & Load Slides
+                        </button>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="nextStep()">Continue <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
+            </div>
+
+            <!-- STEP 2: CONFIGURATION -->
+            <div class="step-content" id="step2">
+                <div class="step-title"><i class="fa-solid fa-sliders"></i> Adjust Settings</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label class="label">Slide Count</label>
+                        <input type="number" id="numSlides" value="5" min="1" max="20">
+                    </div>
+                    <div>
+                        <label class="label">Presentation Tone</label>
+                        <select id="toneInput">
+                            <option value="Professional">Professional</option>
+                            <option value="Funny">Funny</option>
+                            <option value="Educational">Educational</option>
+                            <option value="Inspirational">Inspirational</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label class="label">Target Audience</label>
+                <input type="text" id="audienceInput" placeholder="e.g., Executive Board members">
+
+                <label class="label">Additional Instructions (Optional)</label>
+                <textarea id="instructionsInput" placeholder="Keep it concise with lots of visuals..." rows="2"></textarea>
+
+                <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="includeImages" onchange="toggleImages(this.checked)"> 
+                        <span>Smart Image Enrichment</span>
+                    </label>
+                    <div id="imgModes" style="display: none; margin-top: 12px; margin-left: 26px;">
+                        <label style="margin-right: 15px; font-size: 0.85rem;"><input type="radio" name="imageMode" value="manual" checked> Manual</label>
+                        <label style="font-size: 0.85rem;"><input type="radio" name="imageMode" value="auto"> Automatic AI</label>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    <button class="btn-primary" onclick="nextStep()">Next Aspect <i class="fa-solid fa-palette"></i></button>
+                </div>
+            </div>
+
+            <!-- STEP 3: DESIGN -->
+            <div class="step-content" id="step3">
+                <div class="step-title"><i class="fa-solid fa-palette"></i> Visual Identity</div>
+
+                <label class="label">Choose a Theme</label>
+                <input type="hidden" id="templateChoice" value="professional_blue.pptx">
+                <input type="hidden" id="selectedTitleColor" value="#003366">
+                <input type="hidden" id="selectedTextColor" value="#323232">
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 1.5rem;">
+                    <div>
+                        <label class="label">Header Size (pt)</label>
+                        <input type="number" id="titleFontSize" value="28">
+                    </div>
+                    <div>
+                        <label class="label">Body Size (pt)</label>
+                        <input type="number" id="bodyFontSize" value="24">
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <label class="label">Font Style</label>
+                    <select id="fontStyleInput">
+                        <option value="Calibri">Calibri (Neutral)</option>
+                        <option value="Arial">Arial (Clean)</option>
+                        <option value="Times New Roman">Times New Roman (Classic)</option>
+                        <option value="Georgia">Georgia (Elegant)</option>
+                        <option value="Verdana">Verdana (Modern)</option>
+                        <option value="Trebuchet MS">Trebuchet MS (Dynamic)</option>
+                        <option value="Impact">Impact (Bold)</option>
+                        <option value="Courier New">Courier New (Monospaced)</option>
                     </select>
                 </div>
-            </div>
 
-            <div style="text-align: left; margin-bottom: 1rem;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Target Audience</label>
-                <input type="text" id="audienceInput" placeholder="e.g., Investors, Students, Kids"
-                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-            </div>
-
-            <div style="text-align: left; margin-bottom: 1rem;">
-                <label style="font-weight: bold; margin-bottom: 5px; display: block;">Additional Instructions
-                    (Optional)</label>
-                <textarea id="instructionsInput" placeholder="Any specific requirements..."
-                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-family: inherit;"
-                    rows="3"></textarea>
-            </div>
-
-            <div style="text-align: left; margin-bottom: 1rem; background: #f8f9fa; padding: 15px; border-radius: 5px;">
-                <label style="display: block; margin-bottom: 10px; font-weight: bold;">
-                    <input type="checkbox" id="includeImages" onchange="toggleImageOptions()"> Include Images
-                </label>
-
-                <div id="imageOptions" style="display: none; margin-left: 20px;">
-                    <label style="margin-right: 15px;">
-                        <input type="radio" name="imageMode" value="manual" checked> Manual (Placeholders)
-                    </label>
-                    <label>
-                        <input type="radio" name="imageMode" value="auto"> Automatic (AI Generated)
-                    </label>
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    <button id="generateBtn" class="btn-primary" onclick="startGeneration()">Analyze & Draft <i class="fa-solid fa-wand-magic-sparkles"></i></button>
                 </div>
             </div>
 
-            <button id="generateBtn" onclick="generatePPT()">Generate PPT</button>
+            <!-- STEP 4: LIVE PREVIEW & EDIT -->
+            <div class="step-content" id="step4">
+                <div class="step-title"><i class="fa-solid fa-eye"></i> Live Preview & Polish</div>
+                <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 1.5rem;">Click on any text to edit. Theme styles are applied live.</p>
+                
+                <div id="aiUpdateContainer" style="margin-bottom: 20px; background: rgba(79, 70, 229, 0.1); padding: 15px; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.3);">
+                    <label class="label" style="color: var(--primary-light);"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Refinement</label>
+                    <div style="display: flex; gap: 10px;">
+                        <textarea id="aiUpdateInstruction" placeholder="e.g., 'Make the titles more catchy' or 'Add a slide about future trends'" rows="2" style="margin-bottom: 0; flex: 1;"></textarea>
+                        <button id="aiUpdateBtn" class="btn-primary" style="flex: none; padding: 0 20px;" onclick="updateWithAI()">Update</button>
+                    </div>
+                </div>
+
+                <div id="slidePreviewContainer" style="display: flex; flex-direction: column; gap: 20px; max-height: 500px; overflow-y: auto; padding: 10px;">
+                    <!-- Slides rendered here -->
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back To Design</button>
+                    <button id="finalDownloadBtn" class="btn-primary" onclick="finalizeAndDownload()">Finalize & Download PPTX <i class="fa-solid fa-file-export"></i></button>
+                </div>
+            </div>
         </div>
-        <div id="status"></div>
-        <div id="results" style="margin-top: 2rem;"></div>
+
+        <div id="status">
+            <div id="statusText">AI is initializing...</div>
+            <div class="loading-steps">
+                <div class="l-step" id="l1"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing Sources</div>
+                <div class="l-step" id="l2"><i class="fa-solid fa-circle-notch fa-spin"></i> Synthesizing Knowledge</div>
+                <div class="l-step" id="l3"><i class="fa-solid fa-circle-notch fa-spin"></i> Rendering Design</div>
+            </div>
+        </div>
+
+        <div id="results"></div>
     </div>
 
     <script>
-        function toggleImageOptions() {
-            const isChecked = document.getElementById('includeImages').checked;
-            document.getElementById('imageOptions').style.display = isChecked ? 'block' : 'none';
+        let currentStep = 1;
+        const totalSteps = 4;
+        let generatedSlidesData = null; // Stores JSON from AI
+
+        // ── 12 SlideModel-Inspired Themes ──────────────────────────────────
+        const themes = [
+            { id: "professional_blue.pptx",  name: "Professional",   badge: "Light",  bg: "#FFFFFF", surface: "#EBF3FF", accent: "#1565C0", text: "#212121", titleColor: "#1565C0", textColor: "#212121" },
+            { id: "executive_dark.pptx",     name: "Executive Dark", badge: "Dark",   bg: "#1A1A2E", surface: "#16213E", accent: "#E94560", text: "#EAEAEA", titleColor: "#E94560", textColor: "#EAEAEA" },
+            { id: "teal_modern.pptx",        name: "Teal Modern",    badge: "Light",  bg: "#F0FDFA", surface: "#CCFBF1", accent: "#0D9488", text: "#134E4A", titleColor: "#0D9488", textColor: "#134E4A" },
+            { id: "sunset_coral.pptx",       name: "Sunset Coral",   badge: "Warm",   bg: "#FFF5F5", surface: "#FED7D7", accent: "#E53E3E", text: "#2D3748", titleColor: "#E53E3E", textColor: "#2D3748" },
+            { id: "ocean_blue.pptx",         name: "Ocean Blue",     badge: "Light",  bg: "#EFF6FF", surface: "#DBEAFE", accent: "#2563EB", text: "#1E3A8A", titleColor: "#2563EB", textColor: "#1E3A8A" },
+            { id: "forest_green.pptx",       name: "Forest Green",   badge: "Nature", bg: "#F0FDF4", surface: "#DCFCE7", accent: "#15803D", text: "#14532D", titleColor: "#15803D", textColor: "#14532D" },
+            { id: "royal_purple.pptx",       name: "Royal Purple",   badge: "Dark",   bg: "#1E1B4B", surface: "#312E81", accent: "#818CF8", text: "#EDE9FE", titleColor: "#818CF8", textColor: "#EDE9FE" },
+            { id: "golden_amber.pptx",       name: "Golden Amber",   badge: "Warm",   bg: "#FFFBEB", surface: "#FEF3C7", accent: "#D97706", text: "#451A03", titleColor: "#D97706", textColor: "#451A03" },
+            { id: "charcoal_mono.pptx",      name: "Charcoal Mono",  badge: "Dark",   bg: "#18181B", surface: "#27272A", accent: "#A1A1AA", text: "#FAFAFA", titleColor: "#A1A1AA", textColor: "#FAFAFA" },
+            { id: "rose_blush.pptx",         name: "Rose Blush",     badge: "Soft",   bg: "#FFF1F2", surface: "#FFE4E6", accent: "#E11D48", text: "#1F2937", titleColor: "#E11D48", textColor: "#1F2937" },
+            { id: "navy_slate.pptx",         name: "Navy Slate",     badge: "Dark",   bg: "#0F172A", surface: "#1E293B", accent: "#38BDF8", text: "#F0F9FF", titleColor: "#38BDF8", textColor: "#F0F9FF" },
+            { id: "olive_sage.pptx",         name: "Olive Sage",     badge: "Earth",  bg: "#FAFAF9", surface: "#F5F5F4", accent: "#65A30D", text: "#1A2E05", titleColor: "#65A30D", textColor: "#1A2E05" },
+            { id: "nebula_glow.pptx",        name: "Nebula Glow",    badge: "Special",bg: "#0D0D15", surface: "#1A1A2E", accent: "#7AA2F7", text: "#E0E0FB", titleColor: "#7AA2F7", textColor: "#E0E0FB" },
+            { id: "retrowave_neon.pptx",     name: "Retrowave Neon", badge: "Special",bg: "#240046", surface: "#3C096C", accent: "#FF00FF", text: "#FFFFFF", titleColor: "#FF00FF", textColor: "#FFFFFF" },
+            { id: "facet.pptx",              name: "Facet",          badge: "Official",bg: "#FFFFFF", surface: "#F0F8F8", accent: "#008B8B", text: "#2F4F4F", titleColor: "#008B8B", textColor: "#2F4F4F" },
+            { id: "gallery.pptx",            name: "Gallery",        badge: "Official",bg: "#FFFFFF", surface: "#FDF5E6", accent: "#A52A2A", text: "#3E2723", titleColor: "#A52A2A", textColor: "#3E2723" },
+            { id: "integral.pptx",           name: "Integral",       badge: "Official",bg: "#FFFFFF", surface: "#F5FFFA", accent: "#2E8B57", text: "#1B5E20", titleColor: "#2E8B57", textColor: "#1B5E20" },
+            { id: "ion.pptx",                name: "Ion",            badge: "Official",bg: "#FFFFFF", surface: "#F8F8FF", accent: "#6A5ACD", text: "#1A237E", titleColor: "#6A5ACD", textColor: "#1A237E" },
+            { id: "berlin.pptx",             name: "Berlin",         badge: "Official",bg: "#FFFFFF", surface: "#FFF8DC", accent: "#D2691E", text: "#3E2723", titleColor: "#D2691E", textColor: "#3E2723" },
+        ];
+
+        function initThemes() {
+            const grid = document.getElementById('themeGrid');
+            themes.forEach((t, i) => {
+                const card = document.createElement('div');
+                card.className = `theme-card ${i === 0 ? 'selected' : ''}`;
+                card.onclick = () => {
+                    document.getElementById('templateChoice').value = t.id;
+                    document.getElementById('selectedTitleColor').value = t.titleColor;
+                    document.getElementById('selectedTextColor').value = t.textColor;
+                    document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
+                    card.classList.add('selected');
+                };
+                // Badge background: dark themes get accent, light themes get low-opacity accent
+                const isDark = ['Dark','Mono'].includes(t.badge);
+                const badgeBg = isDark ? t.accent + '33' : t.accent + '22';
+                card.innerHTML = `
+                    <div class="theme-preview" style="background:${t.bg}">
+                        <div class="preview-band" style="background:${t.accent}"></div>
+                        <div class="preview-strip" style="background:${t.surface}"></div>
+                        <div class="preview-underline" style="background:${t.accent}"></div>
+                        <div class="preview-lines">
+                            <div class="preview-line" style="background:${t.text}; width:60px"></div>
+                            <div class="preview-line" style="background:${t.text}; width:45px"></div>
+                            <div class="preview-line" style="background:${t.text}; width:52px"></div>
+                        </div>
+                        <span class="preview-content" style="color:${t.accent}; font-size:1.1rem">Aa</span>
+                    </div>
+                    <div style="text-align:center">
+                        <span class="theme-badge" style="background:${badgeBg}; color:${t.accent}">${t.badge}</span>
+                        <div class="theme-name" style="color:var(--text-main)">${t.name}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
         }
 
-        function toggleSourceInputs() {
-            const sourceType = document.getElementById('sourceType').value;
-            document.getElementById('pdfInputGroup').style.display = sourceType === 'pdf' ? 'block' : 'none';
-            document.getElementById('urlInputGroup').style.display = sourceType === 'url' ? 'block' : 'none';
-            document.getElementById('textInputGroup').style.display = sourceType === 'text' ? 'block' : 'none';
+        function selectSource(type, el) {
+            document.getElementById('sourceType').value = type;
+            document.querySelectorAll('.source-card').forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+
+            document.getElementById('pdfGroup').style.display = type === 'pdf' ? 'block' : 'none';
+            document.getElementById('urlGroup').style.display = type === 'url' ? 'block' : 'none';
+            document.getElementById('textGroup').style.display = type === 'text' ? 'block' : 'none';
+            document.getElementById('pptxGroup').style.display = type === 'pptx_import' ? 'block' : 'none';
+            
+            // If import, we might not need a topic initially
+            document.getElementById('topicInputContainer').style.display = type === 'pptx_import' ? 'none' : 'block';
+        }
+
+        async function importExistingPPT() {
+            const file = document.getElementById('pptxFile').files[0];
+            if(!file) { alert("Please select a file"); return; }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const statusBox = document.getElementById('status');
+            statusBox.style.display = 'block';
+            
+            try {
+                const response = await fetch('/import_ppt', { method: 'POST', body: formData });
+                if(response.ok) {
+                    generatedSlidesData = await response.json();
+                    document.getElementById('topicInput').value = generatedSlidesData.title;
+                    alert("Presentation imported! You can now edit and re-theme it in Step 4.");
+                    renderSlidePreviews();
+                    // Skip to step 3 (Design) to choose a theme for the imported content
+                    currentStep = 3;
+                    document.querySelectorAll('.step-content').forEach(s => s.classList.remove('active'));
+                    document.getElementById('step3').classList.add('active');
+                    updateProgress();
+                } else {
+                    const err = await response.json(); alert(err.error);
+                }
+            } catch(e) { alert("Import failed"); }
+            finally { statusBox.style.display = 'none'; }
+        }
+
+        function toggleImages(checked) {
+            document.getElementById('imgModes').style.display = checked ? 'block' : 'none';
+        }
+
+        function updateProgress() {
+            const fill = document.getElementById('progressFill');
+            fill.style.width = ((currentStep - 1) / (totalSteps - 1)) * 100 + '%';
+            
+            document.querySelectorAll('.step-dot').forEach(dot => {
+                const step = parseInt(dot.getAttribute('data-step'));
+                dot.classList.remove('active', 'completed');
+                if (step === currentStep) dot.classList.add('active');
+                if (step < currentStep) dot.classList.add('completed');
+            });
+        }
+
+        function nextStep() {
+            if (currentStep === 1 && !document.getElementById('topicInput').value) {
+                alert("Please provide a topic first.");
+                return;
+            }
+            if (currentStep < totalSteps) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                currentStep++;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                updateProgress();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                currentStep--;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                updateProgress();
+            }
         }
 
         async function generatePPT() {
-            const sourceType = document.getElementById('sourceType').value;
-            const topic = document.getElementById('topicInput').value;
-            const numSlides = document.getElementById('numSlides').value;
-            const tone = document.getElementById('toneInput').value;
-            const audience = document.getElementById('audienceInput').value;
-            const instructions = document.getElementById('instructionsInput').value;
-            const includeImages = document.getElementById('includeImages').checked;
-            const imageMode = document.querySelector('input[name="imageMode"]:checked').value;
+            const formData = new FormData();
+            formData.append('topic', document.getElementById('topicInput').value);
+            formData.append('num_slides', document.getElementById('numSlides').value);
+            formData.append('tone', document.getElementById('toneInput').value);
+            formData.append('audience', document.getElementById('audienceInput').value);
+            formData.append('additional_instructions', document.getElementById('instructionsInput').value);
+            formData.append('include_images', document.getElementById('includeImages').checked);
+            formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
+            formData.append('source_type', document.getElementById('sourceType').value);
+            formData.append('template', document.getElementById('templateChoice').value);
+            formData.append('title_font_size', document.getElementById('titleFontSize').value);
+            formData.append('body_font_size', document.getElementById('bodyFontSize').value);
+            formData.append('font_style', document.getElementById('fontStyleInput').value);
+            formData.append('title_font_color', document.getElementById('selectedTitleColor').value);
+            formData.append('body_font_color', document.getElementById('selectedTextColor').value);
+
+            if (formData.get('source_type') === 'pdf') {
+                formData.append('file', document.getElementById('pdfFile').files[0]);
+            } else if (formData.get('source_type') === 'url') {
+                formData.append('source_url', document.getElementById('urlInput').value);
+            } else if (formData.get('source_type') === 'text') {
+                formData.append('source_text', document.getElementById('rawTextInput').value);
+            }
 
             const btn = document.getElementById('generateBtn');
-            const status = document.getElementById('status');
+            const statusBox = document.getElementById('status');
             const resultsDiv = document.getElementById('results');
 
-            if (!topic) {
-                alert("Please enter a topic");
-                return;
-            }
-
-            // Build FormData for multipart submission
-            const formData = new FormData();
-            formData.append('topic', topic);
-            formData.append('num_slides', numSlides);
-            formData.append('tone', tone);
-            formData.append('audience', audience);
-            formData.append('additional_instructions', instructions);
-            formData.append('include_images', includeImages);
-            formData.append('image_mode', imageMode);
-            formData.append('source_type', sourceType);
-
-            // Handle specific source data
-            if (sourceType === 'pdf') {
-                const pdfFile = document.getElementById('pdfFile').files[0];
-                if (!pdfFile) { alert("Please select a PDF file"); return; }
-                formData.append('file', pdfFile);
-            } else if (sourceType === 'url') {
-                const urlInput = document.getElementById('urlInput').value;
-                if (!urlInput) { alert("Please enter a URL"); return; }
-                formData.append('source_url', urlInput);
-            } else if (sourceType === 'text') {
-                const rawText = document.getElementById('rawTextInput').value;
-                if (!rawText) { alert("Please enter some raw text"); return; }
-                formData.append('source_text', rawText);
-            }
-
-            // UI State: Loading
             btn.disabled = true;
-            btn.innerHTML = '<div class="spinner"></div> Generating Slides...';
-            status.textContent = "AI is reading documents and designing your presentation...";
-            if (resultsDiv) resultsDiv.innerHTML = '';
+            statusBox.style.display = 'block';
+            resultsDiv.innerHTML = '';
+            
+            // Animation for steps
+            const lSteps = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
+            let activeIdx = 0;
+            
+            const interval = setInterval(() => {
+                lSteps.forEach(s => s.classList.remove('active'));
+                if(activeIdx > 0) lSteps[activeIdx-1].classList.add('done');
+                if(activeIdx < 3) lSteps[activeIdx].classList.add('active');
+                activeIdx++;
+                if(activeIdx > 3) clearInterval(interval);
+            }, 3000);
 
             try {
-                const response = await fetch('/generate_ppt', {
-                    method: 'POST',
-                    body: formData // No Content-Type header needed; browser sets it with boundary automatically
-                });
-
+                const response = await fetch('/generate_ppt', { method: 'POST', body: formData });
                 if (response.ok) {
                     const data = await response.json();
-                    status.textContent = "Presentation Created!";
-
-                    // Display results
-                    const html = `
-                        <div style="margin-top: 20px; padding: 20px; border: 1px solid #d4edda; background-color: #d4edda; color: #155724; border-radius: 5px;">
-                            <h3>Success!</h3>
+                    clearInterval(interval);
+                    lSteps.forEach(s => s.classList.add('done'));
+                    
+                    resultsDiv.innerHTML = `
+                        <div class="success-box">
+                            <i class="fa-solid fa-circle-check success-icon"></i>
+                            <h3>Presentation Ready!</h3>
                             <p>${data.message}</p>
-                            <a href="${data.downloadUrl}" target="_blank" style="display: inline-block; background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Download PPT</a>
+                            <a href="${data.downloadUrl}" class="download-btn">
+                                <i class="fa-solid fa-download"></i> Download .pptx
+                            </a>
                         </div>
                     `;
-
-                    // Ensure results container exists
-                    if (!resultsDiv) {
-                        const newDiv = document.createElement('div');
-                        newDiv.id = 'results';
-                        newDiv.style.marginTop = '2rem';
-                        document.querySelector('.container').appendChild(newDiv);
-                        newDiv.innerHTML = html;
-                    } else {
-                        resultsDiv.innerHTML = html;
-                    }
-
                 } else {
                     const err = await response.json();
-                    status.textContent = "Error: " + (err.error || "Failed to generate");
+                    alert("Error: " + err.error);
                 }
             } catch (error) {
-                status.textContent = "Network error occurred.";
-                console.error(error);
+                alert("Connection failed.");
             } finally {
-                // UI State: Reset
                 btn.disabled = false;
-                btn.innerText = "Generate PPT";
+                statusBox.style.display = 'none';
             }
         }
+
+        async function startGeneration() {
+            // This now just pulls the data from backend and shows step 4
+            const formData = new FormData();
+            formData.append('topic', document.getElementById('topicInput').value);
+            formData.append('num_slides', document.getElementById('numSlides').value);
+            formData.append('tone', document.getElementById('toneInput').value);
+            formData.append('audience', document.getElementById('audienceInput').value);
+            formData.append('additional_instructions', document.getElementById('instructionsInput').value);
+            formData.append('include_images', document.getElementById('includeImages').checked);
+            formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
+            formData.append('source_type', document.getElementById('sourceType').value);
+
+            const statusBox = document.getElementById('status');
+            statusBox.style.display = 'block';
+
+            try {
+                // We use the normal route but we'll modify the backend to optionally just return JSON
+                // For now we'll just parse the result if we want
+                const response = await fetch('/generate_content_only', { method: 'POST', body: formData });
+                if (response.ok) {
+                    const data = await response.json();
+                    generatedSlidesData = data;
+                    renderSlidePreviews();
+                    nextStep();
+                } else {
+                    const err = await response.json(); alert(err.error);
+                }
+            } catch (e) { alert("Generation failed"); }
+            finally { statusBox.style.display = 'none'; }
+        }
+
+        function renderSlidePreviews() {
+            const container = document.getElementById('slidePreviewContainer');
+            const themeId = document.getElementById('templateChoice').value;
+            const theme = themes.find(t => t.id === themeId);
+            
+            container.innerHTML = '';
+            
+            generatedSlidesData.slides.forEach((slide, idx) => {
+                const slideEl = document.createElement('div');
+                slideEl.className = 'mini-slide';
+                slideEl.style.cssText = `
+                    background: ${theme.bg};
+                    border: 2px solid ${theme.accent};
+                    border-radius: 12px;
+                    padding: 20px;
+                    position: relative;
+                    min-height: 240px;
+                    color: ${theme.text};
+                    font-family: inherit;
+                    overflow: hidden;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                `;
+
+                // Theme decorations
+                const band = document.createElement('div');
+                band.style.cssText = `position:absolute; left:0; top:0; bottom:0; width:12px; background:${theme.accent};`;
+                slideEl.appendChild(band);
+
+                const header = document.createElement('h3');
+                header.contentEditable = true;
+                header.innerText = slide.heading;
+                header.style.color = theme.titleColor;
+                header.style.marginBottom = '15px';
+                header.onblur = (e) => { slide.heading = e.target.innerText; };
+                slideEl.appendChild(header);
+
+                const list = document.createElement('ul');
+                list.style.cssText = `margin-left: 20px;`;
+                slide.content.forEach((item, bIdx) => {
+                    const li = document.createElement('li');
+                    li.contentEditable = true;
+                    li.innerText = item.text;
+                    li.style.fontSize = item.level === 0 ? '1rem' : '0.85rem';
+                    li.style.marginBottom = '5px';
+                    li.onblur = (e) => { item.text = e.target.innerText; };
+                    list.appendChild(li);
+                });
+                slideEl.appendChild(list);
+
+                if (slide.chart) {
+                    const chartInfo = document.createElement('div');
+                    chartInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
+                    chartInfo.innerHTML = `<i class="fa-solid fa-chart-column"></i> <b>${slide.chart.type.toUpperCase()} CHART</b>: ${slide.chart.title}`;
+                    slideEl.appendChild(chartInfo);
+                }
+
+                if (slide.table) {
+                    const tableInfo = document.createElement('div');
+                    tableInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
+                    tableInfo.innerHTML = `<i class="fa-solid fa-table"></i> <b>TABLE DETECTED</b>: ${slide.table.length} rows`;
+                    slideEl.appendChild(tableInfo);
+                }
+
+                container.appendChild(slideEl);
+            });
+        }
+
+        async function finalizeAndDownload() {
+            const formData = new FormData();
+            formData.append('full_data', JSON.stringify(generatedSlidesData));
+            formData.append('template', document.getElementById('templateChoice').value);
+            formData.append('title_font_size', document.getElementById('titleFontSize').value);
+            formData.append('body_font_size', document.getElementById('bodyFontSize').value);
+            formData.append('font_style', document.getElementById('fontStyleInput').value);
+            formData.append('title_font_color', document.getElementById('selectedTitleColor').value);
+            formData.append('body_font_color', document.getElementById('selectedTextColor').value);
+
+            const btn = document.getElementById('finalDownloadBtn');
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating PPTX...`;
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/generate_final', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok) {
+                    // Create a hidden link and click it for a proper download experience
+                    const a = document.createElement('a');
+                    a.href = result.downloadUrl;
+                    a.download = ""; // Use the server-provided filename
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else { alert(result.error); }
+            } catch (e) { alert("Download failed"); }
+            finally { 
+                btn.innerHTML = `Finalize & Download PPTX <i class="fa-solid fa-file-export"></i>`;
+                btn.disabled = false; 
+            }
+        }
+
+        async function updateWithAI() {
+            const instruction = document.getElementById('aiUpdateInstruction').value;
+            if (!instruction) { alert("Please enter an instruction"); return; }
+            
+            const btn = document.getElementById('aiUpdateBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+            btn.disabled = true;
+            
+            const formData = new FormData();
+            formData.append('slides', JSON.stringify(generatedSlidesData.slides));
+            formData.append('instruction', instruction);
+            
+            try {
+                const response = await fetch('/update_slides', { method: 'POST', body: formData });
+                if (response.ok) {
+                    const updatedSlides = await response.json();
+                    generatedSlidesData.slides = updatedSlides;
+                    renderSlidePreviews();
+                    document.getElementById('aiUpdateInstruction').value = '';
+                } else {
+                    const err = await response.json();
+                    alert("Update failed: " + err.error);
+                }
+            } catch (e) {
+                alert("Connection failed");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        initThemes();
+        updateProgress();
     </script>
 </body>
 
