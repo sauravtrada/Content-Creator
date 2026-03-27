@@ -15,8 +15,8 @@ def test_flow():
         "topic": topic,
         "source_type": "topic_only",
         "rag_store": None,
-        "include_images": True,
-        "image_mode": "auto",
+        "include_images": False,
+        "image_mode": None,
         "num_slides": 3,
         "tone": "Professional",
         "audience": "Tech Enthusiasts",
@@ -56,7 +56,7 @@ def test_flow():
         output_path = ppt_utils.create_ppt(
             ppt_data, 
             filename=filename, 
-            image_mode="auto"
+            image_mode=None
         )
         
         print(f"success! presentation saved to: {output_path}")

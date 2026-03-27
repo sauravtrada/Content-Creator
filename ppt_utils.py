@@ -224,26 +224,40 @@ def get_layout_by_name(prs, name_substring):
 # ---------------------------------------------------------------------------
 
 def _paginate_slides(original_slides, image_mode, user_body_size):
-    MAX_HEIGHT_PT    = 380
-    CHARS_FULL       = 65
-    CHARS_HALF       = 32
-    ITEM_SPACING     = {0: 16, 1: 12, 2: 8}
+    MAX_HEIGHT_PT    = 480  # Increased for more content per slide
+    ITEM_SPACING     = {0: 12, 1: 8, 2: 4} # Reduced spacing to fit more items
     FONT_MAP         = {0: user_body_size, 1: max(12, user_body_size - 4), 2: max(10, user_body_size - 6)}
-    is_half          = image_mode in ("manual", "auto")
-    chars_limit      = CHARS_HALF if is_half else CHARS_FULL
+    
+    def get_chars_limit(level, has_visual):
+        font_size = FONT_MAP.get(level, 24)
+        # Full area ~900pt, Split area ~450pt. Heuristic char width ~0.55*font
+        area_width = 450 if has_visual else 900
+        return max(20, int(area_width / (font_size * 0.55)))
 
-    def estimate_h(text, level):
+    def estimate_h(text, level, has_visual):
         if not text:
             return 0
+        chars_limit = get_chars_limit(level, has_visual)
         lines   = max(1, (len(text) + chars_limit - 1) // chars_limit)
         line_h  = FONT_MAP.get(level, 24) * 1.2
         return lines * line_h + ITEM_SPACING.get(level, 10)
 
     paginated = []
     for slide_data in original_slides:
+        # Determine if this specific slide will have a second column (visual)
+        explicit_layout = slide_data.get("layout", "auto").lower()
+        if explicit_layout == "text_only":
+            has_visual = False
+        elif explicit_layout == "split":
+            has_visual = True
+        else:
+            # Fallback: Split only if chart or table exists. Manual image queries don't trigger split here.
+            has_visual = bool(slide_data.get("chart")) or bool(slide_data.get("table"))
+
         content = slide_data.get("content", [])
         if not content and "bullet_points" in slide_data:
             content = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
+        
         if not content:
             paginated.append(slide_data)
             continue
@@ -251,7 +265,7 @@ def _paginate_slides(original_slides, image_mode, user_body_size):
         current_items  = []
         current_height = 0
         for item in content:
-            h = estimate_h(item.get("text", ""), item.get("level", 0))
+            h = estimate_h(item.get("text", ""), item.get("level", 0), has_visual)
             if current_height + h > MAX_HEIGHT_PT and current_items:
                 chunk = slide_data.copy()
                 chunk["content"] = current_items
@@ -584,10 +598,26 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
     use_image = image_mode in ("manual", "auto")
 
     for i, slide_data in enumerate(final_slides):
-        if use_image:
+        # Explicit layout support
+        explicit_layout = slide_data.get("layout", "auto").lower()
+        
+        if explicit_layout == "text_only":
+            has_any_visual = False
+        elif explicit_layout == "split":
+            has_any_visual = True
+        else:
+            # Fallback to automatic detection
+            # ONLY split if a chart, table, or actual auto-fetched image exists
+            has_auto_image = (image_mode == "auto" and i in image_map)
+            has_chart = bool(slide_data.get("chart"))
+            has_table = bool(slide_data.get("table"))
+            has_any_visual = has_auto_image or has_chart or has_table
+
+        if has_any_visual:
             layout = get_layout_by_name(prs, "Two Content")
         else:
             layout = get_layout_by_name(prs, "Title and Content")
+            
         slide  = prs.slides.add_slide(layout)
         apply_content_slide_styling(slide)
 
@@ -600,8 +630,9 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
         title_shp.left   = BAR_W + Inches(0.3)
         title_shp.top    = Inches(0.12)
         title_shp.height = Inches(0.85)
-        title_shp.width  = (int((W - BAR_W - Inches(0.4)) * 0.55)
-                             if use_image else int(W - BAR_W - Inches(0.7)))
+        
+        # Title always uses full width to avoid unnecessary empty space on the right
+        title_shp.width = W - BAR_W - Inches(0.7)
 
         title_shp.text = slide_data.get("heading", "Slide")
         tf = title_shp.text_frame
@@ -622,8 +653,9 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
         body_shp.left   = BAR_W + Inches(0.3)
         body_shp.top    = STRIP_H + Inches(0.15)
 
-        if use_image:
-            body_shp.width = int((W - BAR_W - Inches(0.6)) * 0.48)
+        if has_any_visual:
+            # Leave 50% for visuals on the right
+            body_shp.width = int((W - BAR_W - Inches(0.7)) * 0.50)
         else:
             body_shp.width = W - BAR_W - Inches(0.7)
 
@@ -667,40 +699,31 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
                 para.space_after    = Pt(2)
 
         # --- Image (auto mode) ---
+        visual_x = body_shp.left + body_shp.width + Inches(0.4)
+        visual_y = body_shp.top
+        visual_w = W - visual_x - Inches(0.4)
+        visual_h = body_shp.height
+
         if use_image and image_mode == "auto" and i in image_map:
             try:
-                img_l = body_shp.left + body_shp.width + Inches(0.25)
-                img_t = body_shp.top
-                img_w = W - img_l - Inches(0.3)
-                img_h = body_shp.height
-
                 stream = image_map[i]
                 stream.seek(0)
-                pic = slide.shapes.add_picture(stream, img_l, img_t)
+                pic = slide.shapes.add_picture(stream, visual_x, visual_y)
 
                 ow, oh   = pic.width, pic.height
-                ratio    = min(img_w / ow, img_h / oh)
+                ratio    = min(visual_w / ow, visual_h / oh)
                 pic.width  = int(ow * ratio)
                 pic.height = int(oh * ratio)
-                pic.left   = img_l + (img_w - pic.width) // 2
-                pic.top    = img_t + (img_h - pic.height) // 2
+                pic.left   = visual_x + (visual_w - pic.width) // 2
+                pic.top    = visual_y + (visual_h - pic.height) // 2
             except Exception as e:
                 print(f"Image insert error slide {i}: {e}")
 
         # --- Chart or Table ---
         if slide_data.get("chart"):
-            c_x = body_shp.left + body_shp.width + Inches(0.2) if use_image else body_shp.left + Inches(0.5)
-            c_y = body_shp.top
-            c_w = W - c_x - Inches(0.5)
-            c_h = body_shp.height
-            _add_chart(slide, slide_data["chart"], c_x, c_y, c_w, c_h)
-
+            _add_chart(slide, slide_data["chart"], visual_x, visual_y, visual_w, visual_h)
         elif slide_data.get("table"):
-            t_x = body_shp.left + body_shp.width + Inches(0.2) if use_image else body_shp.left + Inches(0.5)
-            t_y = body_shp.top
-            t_w = W - t_x - Inches(0.5)
-            t_h = body_shp.height
-            _add_table(slide, slide_data["table"], t_x, t_y, t_w, t_h)
+            _add_table(slide, slide_data["table"], visual_x, visual_y, visual_w, visual_h)
 
         # Move off-screen any unused layout placeholders (prevents auto-resize)
         if use_image:

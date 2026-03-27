@@ -214,8 +214,10 @@ def content_node(state: AgentState):
     if state.get("include_images"):
 
         image_instruction = """
-Include:
-"image_search_query":"2-3 words"
+- For slides that would benefit from a visual (like concept overviews, emotional impact, or complex processes), include:
+  "image_search_query": "2-3 descriptive words",
+  "layout": "split"
+- For purely informational or list-based slides that don't need a visual, OMIT the "image_search_query" field and set "layout": "text_only".
 """
 
     prompt = f"""
@@ -238,6 +240,7 @@ Return JSON list:
 [
 {{
 "heading":"slide title",
+"layout":"text_only/split",
 "content":[
 {{"text":"point","level":0}}
 ],
@@ -255,10 +258,11 @@ Return JSON list:
 }}
 ]
 
-- ONLY include "chart" if there is numerical data or trends to visualize.
-- ONLY include "table" if there is structured comparative data or a list of specifications.
+- Use "layout": "text_only" for slides that are primarily text and should use the full width. This is the preferred default.
+- Use "layout": "split" ONLY if you are including a "chart" or "table". 
 - Do not include both chart and table on the same slide.
 - Choose "pie" for proportions, "column/bar" for comparisons, and "line" for trends.
+- If a slide is purely descriptive, ALWAYS use "layout": "text_only" and OMIT "image_search_query", "chart", and "table".
 
 {image_instruction}
 """

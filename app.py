@@ -151,7 +151,10 @@ def generate_ppt():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+            return jsonify({"error": "Gemini API Quota Exceeded. Please try again later or use a different API key/model."}), 429
+        return jsonify({"error": error_msg}), 500
 
 
 @app.route("/generate_content_only", methods=["POST"])
@@ -229,6 +232,10 @@ User Instruction:
 Update the slides according to the instruction. 
 - You can change headings, content points, image queries, etc.
 - Keep the same JSON structure.
+- If the user asks for a chart, use this structure:
+  "chart": {{"type": "column/pie/line/bar", "title": "Title", "categories": ["A", "B"], "series": [{{"name": "S1", "values": [10, 20]}}]}}
+- If the user asks for a table, use this structure:
+  "table": [["Header 1", "Header 2"], ["Val 1", "Val 2"]]
 - Return ONLY the updated JSON list of slides.
 
 Updated JSON:
@@ -240,10 +247,13 @@ Updated JSON:
             raise ValueError("Failed to parse updated slides from AI")
             
         return jsonify(updated_slides)
-        
     except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+            return jsonify({"error": "Gemini API Quota Exceeded. Please try again later or use a different API key/model."}), 429
+        return jsonify({"error": error_msg}), 500
 
 
 @app.route("/generate_final", methods=["POST"])
