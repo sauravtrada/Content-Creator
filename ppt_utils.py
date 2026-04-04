@@ -10,6 +10,7 @@ import urllib.parse
 from datetime import datetime
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
+import random
 
 # --- Layout Constants ---
 SLIDE_WIDTH  = Inches(13.333)
@@ -38,18 +39,46 @@ def hex_to_rgb(hex_str, default=None):
     return default
 
 
-def fetch_image(query):
-    """Fetches a placeholder image stream for *query*. Returns BytesIO or None."""
-    if not query:
+def fetch_image(url_or_query):
+    """
+    Fetches an image stream. 
+    If *url_or_query* is a URL, it downloads it directly.
+    Otherwise, it treats it as a query and tries several fallback sources.
+    Returns BytesIO or None.
+    """
+    if not url_or_query:
         return None
-    try:
-        safe_query = urllib.parse.quote(query)
-        url = f"https://placehold.co/800x600?text={safe_query}"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            return BytesIO(response.content)
-    except Exception as e:
-        print(f"Image fetch error for '{query}': {e}")
+        
+    is_url = url_or_query.startswith(("http://", "https://"))
+    
+    if is_url:
+        sources = [url_or_query]
+    else:
+        safe_query = urllib.parse.quote(url_or_query)
+        sources = [
+            f"https://loremflickr.com/800/600/{safe_query}/all",
+            f"https://loremflickr.com/800/600/{safe_query}",
+            f"https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=800&q=80"
+        ]
+    
+    print(f"--- DEBUG: Fetching image for: {url_or_query}")
+    
+    for url in sources:
+        try:
+            # Use a slightly longer timeout for the first attempt if it's a direct URL
+            tout = 15 if is_url else 10
+            response = requests.get(url, timeout=tout, allow_redirects=True)
+            if response.status_code == 200:
+                content_type = response.headers.get('Content-Type', '').lower()
+                if 'image' in content_type:
+                    print(f"--- DEBUG: Successfully fetched image from: {url}")
+                    return BytesIO(response.content)
+                else:
+                    print(f"--- DEBUG: URL {url} returned non-image content-type: {content_type}")
+        except Exception as e:
+            print(f"--- DEBUG: Error fetching from {url}: {e}")
+            continue
+
     return None
 
 
@@ -180,9 +209,11 @@ def _add_table(slide, table_data_list, x, y, w, h):
             for c_idx, cell_val in enumerate(row_data):
                 cell = table.cell(r_idx, c_idx)
                 cell.text = str(cell_val)
-                # Basic styling for headers
-                if r_idx == 0:
-                    for paragraph in cell.text_frame.paragraphs:
+                # Apply consistent styling to all cells
+                for paragraph in cell.text_frame.paragraphs:
+                    paragraph.font.size = Pt(12)  # Smaller font to fit more rows
+                    paragraph.font.name = "Calibri"
+                    if r_idx == 0:
                         paragraph.font.bold = True
         return table_shape
     except Exception as e:
@@ -251,19 +282,27 @@ def _paginate_slides(original_slides, image_mode, user_body_size):
         elif explicit_layout == "split":
             has_visual = True
         else:
-            # Fallback: Split only if chart or table exists. Manual image queries don't trigger split here.
-            has_visual = bool(slide_data.get("chart")) or bool(slide_data.get("table"))
+            # Fallback: Split if chart, table, or an image query exists.
+            has_visual = (
+                bool(slide_data.get("chart")) or 
+                bool(slide_data.get("table")) or 
+                bool(slide_data.get("image_search_query"))
+            )
 
         content = slide_data.get("content", [])
         if not content and "bullet_points" in slide_data:
             content = [{"text": bp, "level": 0} for bp in slide_data["bullet_points"]]
         
+        # Estimate table height if present
+        table_data = slide_data.get("table", [])
+        table_h = len(table_data) * 28 if table_data else 0 # ~28pt per row with 12pt font
+
         if not content:
             paginated.append(slide_data)
             continue
 
         current_items  = []
-        current_height = 0
+        current_height = table_h # Start with table height
         for item in content:
             h = estimate_h(item.get("text", ""), item.get("level", 0), has_visual)
             if current_height + h > MAX_HEIGHT_PT and current_items:
@@ -271,7 +310,7 @@ def _paginate_slides(original_slides, image_mode, user_body_size):
                 chunk["content"] = current_items
                 paginated.append(chunk)
                 current_items  = [item]
-                current_height = h
+                current_height = h # New slide (Cont.) doesn't have the table
             else:
                 current_items.append(item)
                 current_height += h
@@ -283,6 +322,8 @@ def _paginate_slides(original_slides, image_mode, user_body_size):
             if paginated and paginated[-1].get("heading", "").replace(" (Cont.)", "") == base_title.replace(" (Cont.)", ""):
                 chunk["heading"] = f"{base_title} (Cont.)"
                 chunk.pop("image_search_query", None)
+                chunk.pop("chart", None)
+                chunk.pop("table", None)
             paginated.append(chunk)
 
     return paginated
@@ -575,16 +616,25 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
         data.get("slides", []), image_mode, user_body_size
     )
 
-    # Pre-fetch images in parallel if auto mode
+    # Pre-fetch images in parallel if auto mode or if explicit queries are present
     image_map = {}
-    if image_mode == "auto":
+    if image_mode:
         print(f"Fetching images for {len(final_slides)} slides...")
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             future_to_i = {}
             for i, sd in enumerate(final_slides):
-                query = sd.get("image_search_query") or sd.get("heading", "")
-                if query:
-                    future_to_i[executor.submit(fetch_image, query)] = i
+                # Priority 0: Explicit image URL found by agent
+                # Priority 1: Explicit agent-provided query
+                # Priority 2: In 'auto' mode, use slide heading as fallback
+                url = sd.get("image_url")
+                query = sd.get("image_search_query")
+                if not query and image_mode == "auto":
+                    query = sd.get("heading", "")
+                
+                target = url if url else query
+                if target:
+                    future_to_i[executor.submit(fetch_image, target)] = i
+            
             for future in concurrent.futures.as_completed(future_to_i):
                 idx = future_to_i[future]
                 try:
@@ -607,11 +657,13 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
             has_any_visual = True
         else:
             # Fallback to automatic detection
-            # ONLY split if a chart, table, or actual auto-fetched image exists
-            has_auto_image = (image_mode == "auto" and i in image_map)
+            # Split if a chart, table, or an image query exists
             has_chart = bool(slide_data.get("chart"))
             has_table = bool(slide_data.get("table"))
-            has_any_visual = has_auto_image or has_chart or has_table
+            has_image_query = bool(slide_data.get("image_search_query"))
+            has_auto_image = (image_mode == "auto" and i in image_map)
+            
+            has_any_visual = has_chart or has_table or has_image_query or has_auto_image
 
         if has_any_visual:
             layout = get_layout_by_name(prs, "Two Content")
@@ -698,26 +750,36 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
                 para.space_before   = Pt(2)
                 para.space_after    = Pt(2)
 
-        # --- Image (auto mode) ---
+        # --- Image ---
         visual_x = body_shp.left + body_shp.width + Inches(0.4)
         visual_y = body_shp.top
         visual_w = W - visual_x - Inches(0.4)
         visual_h = body_shp.height
 
-        if use_image and image_mode == "auto" and i in image_map:
+        # Fix: Previously only inserted if mode == 'auto'. 
+        # Now inserts if there's an image in map (which handles both auto and manual queries).
+        if use_image and i in image_map:
             try:
                 stream = image_map[i]
                 stream.seek(0)
-                pic = slide.shapes.add_picture(stream, visual_x, visual_y)
-
-                ow, oh   = pic.width, pic.height
-                ratio    = min(visual_w / ow, visual_h / oh)
-                pic.width  = int(ow * ratio)
-                pic.height = int(oh * ratio)
-                pic.left   = visual_x + (visual_w - pic.width) // 2
-                pic.top    = visual_y + (visual_h - pic.height) // 2
+                pic = slide.shapes.add_picture(stream, visual_x, visual_y, width=visual_w, height=visual_h)
+                
+                # To ensure it fills exactly, we set the position and size again
+                pic.left   = visual_x
+                pic.top    = visual_y
+                pic.width  = visual_w
+                pic.height = visual_h
             except Exception as e:
-                print(f"Image insert error slide {i}: {e}")
+                import traceback
+                print(f"--- DEBUG: Image insert error slide {i} (query: {slide_data.get('image_search_query')}): {e}")
+                traceback.print_exc()
+                # Check first few bytes to debug 'cannot identify image file' errors
+                try:
+                    stream.seek(0)
+                    header = stream.read(20)
+                    print(f"--- DEBUG: First 20 bytes of failed image: {header}")
+                except Exception:
+                    pass
 
         # --- Chart or Table ---
         if slide_data.get("chart"):

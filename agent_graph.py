@@ -4,6 +4,7 @@ from typing import TypedDict, List, Dict, Any, Annotated, cast
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
+from ddgs import DDGS
 import time
 
 load_dotenv(override=True)
@@ -306,6 +307,61 @@ def aggregator_node(state: AgentState):
     return {"final_output": json.dumps(final_structure)}
 
 
+# ---------------- IMAGE SEARCHER ---------------- #
+
+def image_searcher_node(state: AgentState):
+    """
+    Agentic node that finds real image URLs for slides using DuckDuckGo.
+    This runs after content generation but before aggregation.
+    """
+    slides = state.get("slides", [])
+    if not state.get("include_images") or not slides:
+        return {"slides": slides}
+
+    print(f"[IMAGE AGENT] Searching for images for {len(slides)} slides...")
+    
+    updated_slides = []
+    with DDGS() as ddgs:
+        for slide in slides:
+            # We only search if an explicit query was provided by the writer agent
+            query = slide.get("image_search_query")
+            
+            # Fallback to heading in 'auto' mode if no query exists but slide is 'split'
+            if not query and state.get("image_mode") == "auto" and slide.get("layout") == "split":
+                query = slide.get("heading")
+
+            if query:
+                try:
+                    # Throttling to avoid 403 Ratelimit
+                    if updated_slides:
+                        time.sleep(2)  # Delay between requests
+
+                    print(f"  - Searching: '{query}'")
+                    
+                    try:
+                        results = list(ddgs.images(query, max_results=5))
+                    except Exception as inner_e:
+                        if "403" in str(inner_e) or "Ratelimit" in str(inner_e):
+                            print(f"    [!] Ratelimit hit! Waiting 5s and retrying with simpler query...")
+                            time.sleep(5)
+                            # Retry with generic query
+                            generic_query = slide.get("heading", query)
+                            results = list(ddgs.images(generic_query, max_results=3))
+                        else:
+                            raise inner_e
+
+                    if results:
+                        slide["image_url"] = results[0].get("image")
+                        slide["image_source"] = "duckduckgo"
+                        print(f"    Found: {slide['image_url'][:60]}...")
+                except Exception as e:
+                    print(f"    Warning: Skipping search for '{query}' due to error: {e}")
+            
+            updated_slides.append(slide)
+
+    return {"slides": updated_slides}
+
+
 # ---------------- REFINER ---------------- #
 
 def refine_node(state: AgentState):
@@ -316,13 +372,14 @@ def refine_node(state: AgentState):
 
         text = ""
 
-        for item in slide["content"]:
-            text += item["text"]
+        # Safely handle missing content
+        for item in slide.get("content", []):
+            text += item.get("text", "")
 
         if len(text) > 500:
 
-            for item in slide["content"]:
-                item["text"] = item["text"][:80]
+            for item in slide.get("content", []):
+                item["text"] = item.get("text", "")[:80]
 
     return {"slides": slides}
 
@@ -337,8 +394,9 @@ def check_length(state: AgentState):
 
         text = ""
 
-        for item in slide["content"]:
-            text += item["text"]
+        # Safely handle missing content
+        for item in slide.get("content", []):
+            text += item.get("text", "")
 
         if len(text) > 500:
             return "refine"
@@ -354,6 +412,7 @@ builder.add_node("planner", planner_node)
 builder.add_node("designer", designer_node)
 builder.add_node("content", content_node)
 builder.add_node("refiner", refine_node)
+builder.add_node("image_searcher", image_searcher_node)
 builder.add_node("aggregator", aggregator_node)
 
 builder.set_entry_point("planner")
@@ -366,7 +425,7 @@ builder.add_conditional_edges(
     check_length,
     {
         "refine": "refiner",
-        "aggregator": "aggregator"
+        "aggregator": "image_searcher"
     }
 )
 
@@ -375,9 +434,11 @@ builder.add_conditional_edges(
     check_length,
     {
         "refine": "refiner",
-        "aggregator": "aggregator"
+        "aggregator": "image_searcher"
     }
 )
+
+builder.add_edge("image_searcher", "aggregator")
 
 builder.add_edge("aggregator", END)
 

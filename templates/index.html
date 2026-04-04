@@ -934,6 +934,14 @@
             formData.append('include_images', document.getElementById('includeImages').checked);
             formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
             formData.append('source_type', document.getElementById('sourceType').value);
+            
+            if (formData.get('source_type') === 'pdf') {
+                formData.append('file', document.getElementById('pdfFile').files[0]);
+            } else if (formData.get('source_type') === 'url') {
+                formData.append('source_url', document.getElementById('urlInput').value);
+            } else if (formData.get('source_type') === 'text') {
+                formData.append('source_text', document.getElementById('rawTextInput').value);
+            }
 
             const statusBox = document.getElementById('status');
             statusBox.style.display = 'block';
@@ -1003,6 +1011,38 @@
                 });
                 slideEl.appendChild(list);
 
+                if (slide.image_url || slide.image_search_query) {
+                    const imgContainer = document.createElement('div');
+                    imgContainer.style.cssText = `margin-top: 15px; border-radius: 8px; overflow: hidden; border: 1px solid ${theme.accent}; background: rgba(0,0,0,0.05);`;
+                    
+                    const img = document.createElement('img');
+                    if (slide.image_url) {
+                        img.src = slide.image_url;
+                    } else {
+                        const safeQuery = encodeURIComponent(slide.image_search_query);
+                        img.src = `https://loremflickr.com/400/250/${safeQuery}`;
+                    }
+                    img.style.cssText = `width: 100%; height: auto; min-height: 100px; display: block; filter: brightness(0.9);`;
+                    img.onerror = () => {
+                        img.src = "https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=400&q=80"; // Fallback
+                    };
+                    imgContainer.appendChild(img);
+                    
+                    const imgInfo = document.createElement('div');
+                    imgInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 8px 12px; font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;`;
+                    
+                    const sourceText = slide.image_source ? `[${slide.image_source.toUpperCase()}]` : '[AUTO]';
+                    imgInfo.innerHTML = `
+                        <span><i class="fa-solid fa-image"></i> <b>${sourceText}:</b> ${slide.image_search_query || 'Visual Content'}</span>
+                        <button onclick="regenerateImage(${idx})" style="background:transparent; border:none; padding:2px; color:${theme.accent}; cursor:pointer;" title="New Image">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    `;
+                    imgContainer.appendChild(imgInfo);
+                    
+                    slideEl.appendChild(imgContainer);
+                }
+
                 if (slide.chart) {
                     const chartInfo = document.createElement('div');
                     chartInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
@@ -1028,6 +1068,7 @@
             formData.append('title_font_size', document.getElementById('titleFontSize').value);
             formData.append('body_font_size', document.getElementById('bodyFontSize').value);
             formData.append('font_style', document.getElementById('fontStyleInput').value);
+            formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
             formData.append('title_font_color', document.getElementById('selectedTitleColor').value);
             formData.append('body_font_color', document.getElementById('selectedTextColor').value);
 
@@ -1084,6 +1125,19 @@
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             }
+        }
+
+        async function regenerateImage(slideIdx) {
+            const slide = generatedSlidesData.slides[slideIdx];
+            const newQuery = prompt("What should the agent search for?", slide.image_search_query);
+            if (!newQuery) return;
+            
+            slide.image_search_query = newQuery;
+            
+            // Re-render immediately with a "loading" state maybe, or just call update
+            const instruction = `Update the image for slide "${slide.heading}" with search query: "${newQuery}"`;
+            document.getElementById('aiUpdateInstruction').value = instruction;
+            updateWithAI();
         }
 
         initThemes();

@@ -51,8 +51,8 @@ def generate_ppt():
     additional_instructions = request.form.get("additional_instructions", "")
     source_type = request.form.get("source_type", "topic_only")
     template_choice = request.form.get("template", "default")
-    title_font_size = int(request.form.get("title_font_size", 28))
-    body_font_size = int(request.form.get("body_font_size", 24))
+    title_font_size = int(request.form.get("title_font_size", 26))
+    body_font_size = int(request.form.get("body_font_size", 22))
     font_style = request.form.get("font_style", "Calibri")
     title_font_color = request.form.get("title_font_color", "#000000")
     body_font_color = request.form.get("body_font_color", "#333333")
@@ -172,17 +172,29 @@ def generate_content_only():
     try:
         rag_store = None
         # Handle PDF/URL/Text ingestion (same as in generate_ppt)
-        if source_type == 'pdf' and 'file' in request.files:
+        if source_type == 'pdf':
+            if 'file' not in request.files:
+                return jsonify({"error": "No PDF file uploaded"}), 400
             file = request.files['file']
+            if file.filename == '':
+                return jsonify({"error": "No file selected"}), 400
+            
             temp_path = os.path.join(tempfile.gettempdir(), os.urandom(8).hex() + "_" + file.filename)
             file.save(temp_path)
-            try: rag_store = ingest_document(source=temp_path, source_type='pdf')
+            try: 
+                rag_store = ingest_document(source=temp_path, source_type='pdf')
             finally: 
                 if os.path.exists(temp_path): os.remove(temp_path)
         elif source_type == 'url':
-            rag_store = ingest_document(source=request.form.get("source_url"), source_type='url')
+            source_url = request.form.get("source_url")
+            if not source_url:
+                return jsonify({"error": "URL is required"}), 400
+            rag_store = ingest_document(source=source_url, source_type='url')
         elif source_type == 'text':
-            rag_store = ingest_document(source=request.form.get("source_text"), source_type='text')
+            source_text = request.form.get("source_text")
+            if not source_text:
+                return jsonify({"error": "Raw text is required"}), 400
+            rag_store = ingest_document(source=source_text, source_type='text')
 
         initial_state = {
             "topic": topic,
@@ -222,21 +234,24 @@ def update_slides():
         current_slides = json.loads(current_slides_json)
         
         prompt = f"""
-You are a presentation editor. 
-Current Slides (JSON):
+You are a professional presentation editor. 
+Current Slides (JSON list):
 {json.dumps(current_slides, indent=2)}
 
 User Instruction:
 "{instruction}"
 
-Update the slides according to the instruction. 
-- You can change headings, content points, image queries, etc.
-- Keep the same JSON structure.
-- If the user asks for a chart, use this structure:
-  "chart": {{"type": "column/pie/line/bar", "title": "Title", "categories": ["A", "B"], "series": [{{"name": "S1", "values": [10, 20]}}]}}
-- If the user asks for a table, use this structure:
-  "table": [["Header 1", "Header 2"], ["Val 1", "Val 2"]]
-- Return ONLY the updated JSON list of slides.
+Update the presentation according to the instruction. 
+- You can MODIFY existing slides, DELETE slides, or **ADD NEW SLIDES** (by appending them to the list).
+- If the user asks for a **NEW SLIDE**, create a new slide object with a logical heading and content.
+- **IMAGES**: If the user asks for an image (on a new or existing slide):
+  1. You MUST include: `"image_search_query": "a descriptive 3-5 word query for a high-quality photo"`
+  2. You MUST set `"layout": "split"`.
+- **VISUALS**: For any slide with a chart or table, set `"layout": "split"`. Otherwise use `"layout": "text_only"`.
+- CHARTS: `"chart": {{"type": "column/pie/line/bar", "title": "Title", "categories": ["A", "B"], "series": [{{"name": "S1", "values": [10, 20]}}]}}`
+- TABLES: `"table": [["Header 1", "Header 2"], ["Val 1", "Val 2"]]`
+- STRUCTURE: Ensure the "content" field is a list of objects: `[{{"text": "point", "level": 0}}]`.
+- Return ONLY the updated JSON list of slides. No preamble.
 
 Updated JSON:
 """
@@ -245,6 +260,21 @@ Updated JSON:
         
         if not updated_slides:
             raise ValueError("Failed to parse updated slides from AI")
+            
+        # If AI wrapped it in an object like {"slides": [...]}, unwrap it
+        if isinstance(updated_slides, dict) and "slides" in updated_slides:
+            updated_slides = updated_slides["slides"]
+        
+        # --- NEW: Agentic Image Discovery for Updated Slides ---
+        from agent_graph import image_searcher_node
+        # Mock a state object for the node
+        mock_state = {
+            "slides": updated_slides,
+            "include_images": True, 
+            "image_mode": "manual" # Default to manual for updates
+        }
+        image_result = image_searcher_node(mock_state)
+        updated_slides = image_result.get("slides", updated_slides)
             
         return jsonify(updated_slides)
     except Exception as e:
@@ -274,7 +304,11 @@ def generate_final():
         }
 
         filename = f"presentation_{os.urandom(4).hex()}.pptx"
-        output_path = ppt_utils.create_ppt(ppt_data, filename=filename)
+        output_path = ppt_utils.create_ppt(
+            ppt_data, 
+            filename=filename, 
+            image_mode=request.form.get("image_mode", "manual")
+        )
         download_url = url_for('download_file', filename=filename)
         
         return jsonify({"message": "Success", "downloadUrl": download_url})
