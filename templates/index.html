@@ -676,7 +676,7 @@
                 <div id="aiUpdateContainer" style="margin-bottom: 20px; background: rgba(79, 70, 229, 0.1); padding: 15px; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.3);">
                     <label class="label" style="color: var(--primary-light);"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Refinement</label>
                     <div style="display: flex; gap: 10px;">
-                        <textarea id="aiUpdateInstruction" placeholder="e.g., 'Make the titles more catchy' or 'Add a slide about future trends'" rows="2" style="margin-bottom: 0; flex: 1;"></textarea>
+                        <textarea id="aiUpdateInstruction" placeholder="e.g. 'Remove the image from slide 2' or 'Add a bar chart to slide 3' or 'Make all titles more catchy'" rows="2" style="margin-bottom: 0; flex: 1;"></textarea>
                         <button id="aiUpdateBtn" class="btn-primary" style="flex: none; padding: 0 20px;" onclick="updateWithAI()">Update</button>
                     </div>
                 </div>
@@ -686,7 +686,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back To Design</button>
+                    <button class="btn-secondary" id="backToDesignBtn" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back To Design</button>
                     <button id="finalDownloadBtn" class="btn-primary" onclick="finalizeAndDownload()">Finalize & Download PPTX <i class="fa-solid fa-file-export"></i></button>
                 </div>
             </div>
@@ -708,6 +708,11 @@
         let currentStep = 1;
         const totalSteps = 4;
         let generatedSlidesData = null; // Stores JSON from AI
+
+        // --- Import Mode State ---
+        let isImportMode = false;       // true when user uploaded an existing PPTX
+        let currentSessionId = null;    // session ID returned by /import_ppt
+        let lastPatchedDownloadUrl = null; // URL of the most recent patched PPTX
 
         // ── 12 SlideModel-Inspired Themes ──────────────────────────────────
         const themes = [
@@ -791,23 +796,29 @@
             
             const statusBox = document.getElementById('status');
             statusBox.style.display = 'block';
+            const stEl = document.getElementById('statusText'); if (stEl) stEl.innerText = 'Parsing presentation...';
             
             try {
                 const response = await fetch('/import_ppt', { method: 'POST', body: formData });
                 if(response.ok) {
-                    generatedSlidesData = await response.json();
-                    document.getElementById('topicInput').value = generatedSlidesData.title;
-                    alert("Presentation imported! You can now edit and re-theme it in Step 4.");
-                    renderSlidePreviews();
-                    // Skip to step 3 (Design) to choose a theme for the imported content
-                    currentStep = 3;
+                    const data = await response.json();
+                    generatedSlidesData = data;
+
+                    // Switch to import mode
+                    isImportMode = true;
+                    currentSessionId = data.session_id;
+                    lastPatchedDownloadUrl = null;
+
+                    // Jump directly to Step 4 — no theme/config needed, design is preserved
                     document.querySelectorAll('.step-content').forEach(s => s.classList.remove('active'));
-                    document.getElementById('step3').classList.add('active');
+                    currentStep = 4;
+                    document.getElementById('step4').classList.add('active');
                     updateProgress();
+                    renderSlidePreviews();
                 } else {
                     const err = await response.json(); alert(err.error);
                 }
-            } catch(e) { alert("Import failed"); }
+            } catch(e) { alert("Import failed: " + e); }
             finally { statusBox.style.display = 'none'; }
         }
 
@@ -828,6 +839,14 @@
         }
 
         function nextStep() {
+            const sourceType = document.getElementById('sourceType').value;
+
+            // If user selected "Import PPTX", the Continue button should trigger the import
+            if (currentStep === 1 && sourceType === 'pptx_import') {
+                importExistingPPT();  // This will jump to Step 4 on success
+                return;
+            }
+
             if (currentStep === 1 && !document.getElementById('topicInput').value) {
                 alert("Please provide a topic first.");
                 return;
@@ -964,45 +983,86 @@
 
         function renderSlidePreviews() {
             const container = document.getElementById('slidePreviewContainer');
-            const themeId = document.getElementById('templateChoice').value;
-            const theme = themes.find(t => t.id === themeId);
-            
+            const themeId   = document.getElementById('templateChoice').value;
+            const theme     = themes.find(t => t.id === themeId) || themes[0];
+
+            // Show/hide import banner & back button
+            const bannerEl = document.getElementById('importModeBanner');
+            if (bannerEl) { bannerEl.style.display = isImportMode ? 'flex' : 'none'; bannerEl.style.alignItems = 'center'; bannerEl.style.gap = '10px'; }
+            const backBtn = document.getElementById('backToDesignBtn');
+            if (backBtn) { backBtn.style.display = isImportMode ? 'none' : ''; }
+
             container.innerHTML = '';
-            
-            generatedSlidesData.slides.forEach((slide, idx) => {
+
+            const slides = generatedSlidesData.slides || [];
+            slides.forEach((slide, idx) => {
+                // In import mode use a neutral dark card (can't preview original design)
+                const cardBg     = isImportMode ? '#1e293b' : theme.bg;
+                const cardBorder = isImportMode ? '#38bdf8' : theme.accent;
+                const cardText   = isImportMode ? '#f0f9ff' : theme.text;
+                const titleColor = isImportMode ? '#38bdf8' : theme.titleColor;
+
                 const slideEl = document.createElement('div');
                 slideEl.className = 'mini-slide';
                 slideEl.style.cssText = `
-                    background: ${theme.bg};
-                    border: 2px solid ${theme.accent};
+                    background: ${cardBg};
+                    border: 2px solid ${cardBorder};
                     border-radius: 12px;
                     padding: 20px;
                     position: relative;
-                    min-height: 240px;
-                    color: ${theme.text};
+                    min-height: 200px;
+                    color: ${cardText};
                     font-family: inherit;
                     overflow: hidden;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                 `;
 
-                // Theme decorations
+                // Slide number badge
+                const badge = document.createElement('div');
+                badge.style.cssText = `position:absolute; top:10px; right:14px; font-size:0.72rem; opacity:0.55; font-weight:600;`;
+                badge.innerText = `Slide ${idx + 1}`;
+                slideEl.appendChild(badge);
+
+                // Accent bar
                 const band = document.createElement('div');
-                band.style.cssText = `position:absolute; left:0; top:0; bottom:0; width:12px; background:${theme.accent};`;
+                band.style.cssText = `position:absolute; left:0; top:0; bottom:0; width:10px; background:${cardBorder};`;
                 slideEl.appendChild(band);
 
+                // Title
                 const header = document.createElement('h3');
-                header.contentEditable = true;
+                header.contentEditable = !isImportMode;
                 header.innerText = slide.heading;
-                header.style.color = theme.titleColor;
-                header.style.marginBottom = '15px';
+                header.style.cssText = `color:${titleColor}; margin-bottom:10px; padding-right:50px; font-size:1.05rem;`;
                 header.onblur = (e) => { slide.heading = e.target.innerText; };
                 slideEl.appendChild(header);
 
+                // Shape inventory tags (import mode)
+                if (isImportMode && slide.shapes) {
+                    const tags = [];
+                    if (slide.shapes.images   > 0) tags.push(`📷 ${slide.shapes.images} image${slide.shapes.images>1?'s':''}`);
+                    if (slide.shapes.charts   > 0) tags.push(`📊 ${slide.shapes.charts} chart${slide.shapes.charts>1?'s':''}`);
+                    if (slide.shapes.tables   > 0) tags.push(`📋 ${slide.shapes.tables} table${slide.shapes.tables>1?'s':''}`);
+                    if (slide.shapes.smartarts> 0) tags.push(`🔷 ${slide.shapes.smartarts} diagram${slide.shapes.smartarts>1?'s':''}`);
+
+                    if (tags.length > 0) {
+                        const tagRow = document.createElement('div');
+                        tagRow.style.cssText = `display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;`;
+                        tags.forEach(tag => {
+                            const t = document.createElement('span');
+                            t.style.cssText = `background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.35); color:#38bdf8; padding:2px 8px; border-radius:20px; font-size:0.75rem;`;
+                            t.innerText = tag;
+                            tagRow.appendChild(t);
+                        });
+                        slideEl.appendChild(tagRow);
+                    }
+                }
+
+                // Content bullets
                 const list = document.createElement('ul');
                 list.style.cssText = `margin-left: 20px;`;
-                slide.content.forEach((item, bIdx) => {
+                (slide.content || []).forEach((item, bIdx) => {
                     const li = document.createElement('li');
-                    li.contentEditable = true;
+                    li.contentEditable = !isImportMode;
                     li.innerText = item.text;
                     li.style.fontSize = item.level === 0 ? '1rem' : '0.85rem';
                     li.style.marginBottom = '5px';
@@ -1011,50 +1071,40 @@
                 });
                 slideEl.appendChild(list);
 
-                if (slide.image_url || slide.image_search_query) {
-                    const imgContainer = document.createElement('div');
-                    imgContainer.style.cssText = `margin-top: 15px; border-radius: 8px; overflow: hidden; border: 1px solid ${theme.accent}; background: rgba(0,0,0,0.05);`;
-                    
-                    const img = document.createElement('img');
-                    if (slide.image_url) {
-                        img.src = slide.image_url;
-                    } else {
-                        const safeQuery = encodeURIComponent(slide.image_search_query);
-                        img.src = `https://loremflickr.com/400/250/${safeQuery}`;
+                // Image / chart / table preview (AI-generated mode only)
+                if (!isImportMode) {
+                    if (slide.image_url || slide.image_search_query) {
+                        const imgContainer = document.createElement('div');
+                        imgContainer.style.cssText = `margin-top: 15px; border-radius: 8px; overflow: hidden; border: 1px solid ${theme.accent}; background: rgba(0,0,0,0.05);`;
+                        const img = document.createElement('img');
+                        if (slide.image_url) {
+                            img.src = slide.image_url;
+                        } else {
+                            const safeQuery = encodeURIComponent(slide.image_search_query);
+                            img.src = `https://loremflickr.com/400/250/${safeQuery}`;
+                        }
+                        img.style.cssText = `width: 100%; height: auto; min-height: 100px; display: block; filter: brightness(0.9);`;
+                        img.onerror = () => { img.src = "https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=400&q=80"; };
+                        imgContainer.appendChild(img);
+                        const imgInfo = document.createElement('div');
+                        imgInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 8px 12px; font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;`;
+                        const sourceText = slide.image_source ? `[${slide.image_source.toUpperCase()}]` : '[AUTO]';
+                        imgInfo.innerHTML = `<span><i class="fa-solid fa-image"></i> <b>${sourceText}:</b> ${slide.image_search_query || 'Visual Content'}</span><button onclick="regenerateImage(${idx})" style="background:transparent; border:none; padding:2px; color:${theme.accent}; cursor:pointer;" title="New Image"><i class="fa-solid fa-arrows-rotate"></i></button>`;
+                        imgContainer.appendChild(imgInfo);
+                        slideEl.appendChild(imgContainer);
                     }
-                    img.style.cssText = `width: 100%; height: auto; min-height: 100px; display: block; filter: brightness(0.9);`;
-                    img.onerror = () => {
-                        img.src = "https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=400&q=80"; // Fallback
-                    };
-                    imgContainer.appendChild(img);
-                    
-                    const imgInfo = document.createElement('div');
-                    imgInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 8px 12px; font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;`;
-                    
-                    const sourceText = slide.image_source ? `[${slide.image_source.toUpperCase()}]` : '[AUTO]';
-                    imgInfo.innerHTML = `
-                        <span><i class="fa-solid fa-image"></i> <b>${sourceText}:</b> ${slide.image_search_query || 'Visual Content'}</span>
-                        <button onclick="regenerateImage(${idx})" style="background:transparent; border:none; padding:2px; color:${theme.accent}; cursor:pointer;" title="New Image">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                        </button>
-                    `;
-                    imgContainer.appendChild(imgInfo);
-                    
-                    slideEl.appendChild(imgContainer);
-                }
-
-                if (slide.chart) {
-                    const chartInfo = document.createElement('div');
-                    chartInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
-                    chartInfo.innerHTML = `<i class="fa-solid fa-chart-column"></i> <b>${slide.chart.type.toUpperCase()} CHART</b>: ${slide.chart.title}`;
-                    slideEl.appendChild(chartInfo);
-                }
-
-                if (slide.table) {
-                    const tableInfo = document.createElement('div');
-                    tableInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
-                    tableInfo.innerHTML = `<i class="fa-solid fa-table"></i> <b>TABLE DETECTED</b>: ${slide.table.length} rows`;
-                    slideEl.appendChild(tableInfo);
+                    if (slide.chart) {
+                        const chartInfo = document.createElement('div');
+                        chartInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
+                        chartInfo.innerHTML = `<i class="fa-solid fa-chart-column"></i> <b>${slide.chart.type.toUpperCase()} CHART</b>: ${slide.chart.title}`;
+                        slideEl.appendChild(chartInfo);
+                    }
+                    if (slide.table) {
+                        const tableInfo = document.createElement('div');
+                        tableInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 0.8rem; border: 1px dashed ${theme.accent}`;
+                        tableInfo.innerHTML = `<i class="fa-solid fa-table"></i> <b>TABLE DETECTED</b>: ${slide.table.length} rows`;
+                        slideEl.appendChild(tableInfo);
+                    }
                 }
 
                 container.appendChild(slideEl);
@@ -1062,53 +1112,98 @@
         }
 
         async function finalizeAndDownload() {
-            const formData = new FormData();
-            formData.append('full_data', JSON.stringify(generatedSlidesData));
-            formData.append('template', document.getElementById('templateChoice').value);
-            formData.append('title_font_size', document.getElementById('titleFontSize').value);
-            formData.append('body_font_size', document.getElementById('bodyFontSize').value);
-            formData.append('font_style', document.getElementById('fontStyleInput').value);
-            formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
-            formData.append('title_font_color', document.getElementById('selectedTitleColor').value);
-            formData.append('body_font_color', document.getElementById('selectedTextColor').value);
-
             const btn = document.getElementById('finalDownloadBtn');
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating PPTX...`;
             btn.disabled = true;
 
             try {
+                // --- IMPORT MODE: download the last patched file directly ---
+                if (isImportMode) {
+                    if (lastPatchedDownloadUrl) {
+                        const a = document.createElement('a');
+                        a.href = lastPatchedDownloadUrl;
+                        a.download = '';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    } else {
+                        // No patches applied yet — download the original
+                        alert('No changes applied yet. Use the AI Refinement box to make edits, then download.');
+                    }
+                    return;
+                }
+
+                // --- NORMAL MODE: send JSON to /generate_final ---
+                const formData = new FormData();
+                formData.append('full_data', JSON.stringify(generatedSlidesData));
+                formData.append('template', document.getElementById('templateChoice').value);
+                formData.append('title_font_size', document.getElementById('titleFontSize').value);
+                formData.append('body_font_size', document.getElementById('bodyFontSize').value);
+                formData.append('font_style', document.getElementById('fontStyleInput').value);
+                formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
+                formData.append('title_font_color', document.getElementById('selectedTitleColor').value);
+                formData.append('body_font_color', document.getElementById('selectedTextColor').value);
+
                 const response = await fetch('/generate_final', { method: 'POST', body: formData });
-                const result = await response.json();
+                const result   = await response.json();
                 if (response.ok) {
-                    // Create a hidden link and click it for a proper download experience
                     const a = document.createElement('a');
                     a.href = result.downloadUrl;
-                    a.download = ""; // Use the server-provided filename
+                    a.download = '';
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                 } else { alert(result.error); }
             } catch (e) { alert("Download failed"); }
-            finally { 
-                btn.innerHTML = `Finalize & Download PPTX <i class="fa-solid fa-file-export"></i>`;
-                btn.disabled = false; 
+            finally {
+                btn.innerHTML = `Finalize &amp; Download PPTX <i class="fa-solid fa-file-export"></i>`;
+                btn.disabled = false;
             }
         }
 
         async function updateWithAI() {
             const instruction = document.getElementById('aiUpdateInstruction').value;
-            if (!instruction) { alert("Please enter an instruction"); return; }
-            
+            if (!instruction) { alert('Please enter an instruction'); return; }
+
             const btn = document.getElementById('aiUpdateBtn');
             const originalText = btn.innerHTML;
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
             btn.disabled = true;
-            
-            const formData = new FormData();
-            formData.append('slides', JSON.stringify(generatedSlidesData.slides));
-            formData.append('instruction', instruction);
-            
+
             try {
+                // ── IMPORT MODE: Use /update_ppt_live (in-place patch) ──────────────
+                if (isImportMode) {
+                    if (!currentSessionId) { alert('Session lost. Please re-upload your file.'); return; }
+
+                    const formData = new FormData();
+                    formData.append('session_id',      currentSessionId);
+                    formData.append('instruction',     instruction);
+                    formData.append('current_slides',  JSON.stringify(generatedSlidesData.slides || []));
+
+                    const response = await fetch('/update_ppt_live', { method: 'POST', body: formData });
+                    if (response.ok) {
+                        const result = await response.json();
+                        generatedSlidesData.slides = result.slides;
+                        lastPatchedDownloadUrl     = result.downloadUrl;
+                        renderSlidePreviews();
+                        document.getElementById('aiUpdateInstruction').value = '';
+
+                        // Show a subtle "ready to download" hint
+                        const btn2 = document.getElementById('finalDownloadBtn');
+                        btn2.innerHTML = `Download Updated PPTX <i class="fa-solid fa-file-export"></i>`;
+                        btn2.style.background = 'var(--secondary)';
+                    } else {
+                        const err = await response.json();
+                        alert('Update failed: ' + err.error);
+                    }
+                    return;
+                }
+
+                // ── NORMAL MODE: Use /update_slides (AI text regeneration) ──────────
+                const formData = new FormData();
+                formData.append('slides',      JSON.stringify(generatedSlidesData.slides));
+                formData.append('instruction', instruction);
+
                 const response = await fetch('/update_slides', { method: 'POST', body: formData });
                 if (response.ok) {
                     const updatedSlides = await response.json();
@@ -1117,13 +1212,13 @@
                     document.getElementById('aiUpdateInstruction').value = '';
                 } else {
                     const err = await response.json();
-                    alert("Update failed: " + err.error);
+                    alert('Update failed: ' + err.error);
                 }
             } catch (e) {
-                alert("Connection failed");
+                alert('Connection failed: ' + e);
             } finally {
                 btn.innerHTML = originalText;
-                btn.disabled = false;
+                btn.disabled  = false;
             }
         }
 

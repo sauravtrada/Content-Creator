@@ -1,11 +1,10 @@
 import os
 import json
+import concurrent.futures
 from typing import TypedDict, List, Dict, Any, Annotated, cast
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
-from ddgs import DDGS
-import time
 
 load_dotenv(override=True)
 
@@ -36,6 +35,7 @@ class AgentState(TypedDict):
     slides: Annotated[List[Dict[str, Any]], list_reducer]
     final_output: str
     retry_count: int
+    design_prefs: Dict[str, Any]   # passed through from app.py to ppt_utils
 
 
 # ---------------- LLM ---------------- #
@@ -90,6 +90,83 @@ def extract_json(text):
 
     except Exception:
         return None
+
+
+# ---------------- VALIDATION LAYER ---------------- #
+
+_FALLBACK_CONTENT = [
+    {"text": "Key concepts and overview", "level": 0},
+    {"text": "Important considerations", "level": 1},
+    {"text": "Summary and next steps", "level": 1},
+]
+
+
+def validate_and_repair_slides(slides: Any) -> List[Dict[str, Any]]:
+    """
+    Validates and repairs a list of slide dicts from the LLM.
+    - Removes slides that are not dicts
+    - Ensures required fields: heading, content, layout
+    - Enforces hard content limits: max 5 level-0 bullets, 15 words per bullet
+    - Applies deterministic layout rule (backend, not LLM)
+    """
+    if not isinstance(slides, list):
+        return []
+
+    repaired = []
+    for slide in slides:
+        if not isinstance(slide, dict):
+            continue
+
+        # Ensure heading
+        if not slide.get("heading"):
+            slide["heading"] = "Slide"
+
+        # Ensure content is a list of dicts with 'text'
+        raw_content = slide.get("content", [])
+        if not isinstance(raw_content, list):
+            raw_content = []
+
+        cleaned_content = []
+        for item in raw_content:
+            if isinstance(item, str):
+                item = {"text": item, "level": 0}
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            # Hard constraint: max 15 words per bullet
+            words = text.split()
+            if len(words) > 15:
+                text = " ".join(words[:15]) + "..."
+            cleaned_content.append({"text": text, "level": int(item.get("level", 0))})
+
+        # Hard constraint: max 5 level-0 bullets per slide
+        level0_count = 0
+        final_content = []
+        for item in cleaned_content:
+            if item["level"] == 0:
+                if level0_count >= 5:
+                    continue
+                level0_count += 1
+            final_content.append(item)
+
+        slide["content"] = final_content if final_content else list(_FALLBACK_CONTENT)
+
+        # Deterministic layout rule (backend enforces, not LLM)
+        has_image_query = bool(slide.get("image_search_query"))
+        has_image_url   = bool(slide.get("image_url"))
+        has_chart       = bool(slide.get("chart"))
+        has_table       = bool(slide.get("table"))
+
+        if has_image_query or has_image_url or has_chart or has_table:
+            slide["layout"] = "split"
+        else:
+            slide["layout"] = "text_only"
+
+        repaired.append(slide)
+
+    return repaired
 
 
 # ---------------- PLANNER ---------------- #
@@ -215,10 +292,11 @@ def content_node(state: AgentState):
     if state.get("include_images"):
 
         image_instruction = """
-- For slides that would benefit from a visual (like concept overviews, emotional impact, or complex processes), include:
-  "image_search_query": "2-3 descriptive words",
-  "layout": "split"
-- For purely informational or list-based slides that don't need a visual, OMIT the "image_search_query" field and set "layout": "text_only".
+- For slides that would benefit from a visual (concept overviews, complex processes):
+  Include "image_search_query": "2-4 descriptive words for a photo search"
+- For purely informational/list-based slides: OMIT "image_search_query" entirely.
+- NOTE: layout (split/text_only) will be assigned automatically by the backend.
+  You do NOT need to set "layout" — it will be overridden.
 """
 
     prompt = f"""
@@ -272,21 +350,19 @@ Return JSON list:
 
     slides = extract_json(response.content)
 
+    # Always validate + repair LLM output before using it
+    slides = validate_and_repair_slides(slides)
+
     if slides:
         return {"slides": slides}
 
+    # Fallback: generate safe default slides
     fallback = []
-
     for title in outline:
-
         fallback.append({
             "heading": title,
-            "content": [
-                {"text": "Overview", "level": 0},
-                {"text": "Key ideas", "level": 1},
-                {"text": "Future outlook", "level": 1}
-            ],
-            "image_search_query": title
+            "layout": "text_only",
+            "content": list(_FALLBACK_CONTENT),
         })
 
     return {"slides": fallback}
@@ -299,9 +375,10 @@ def aggregator_node(state: AgentState):
     print("[AGGREGATOR] Building final output")
 
     final_structure = {
-        "title": state["presentation_title"],
+        "title": state.get("presentation_title", "Untitled"),
         "theme": state.get("theme", {}),
-        "slides": state.get("slides", [])
+        "slides": state.get("slides", []),
+        "design_prefs": state.get("design_prefs", {})  # pass through to ppt_utils
     }
 
     return {"final_output": json.dumps(final_structure)}
@@ -311,53 +388,66 @@ def aggregator_node(state: AgentState):
 
 def image_searcher_node(state: AgentState):
     """
-    Agentic node that finds real image URLs for slides using DuckDuckGo.
-    This runs after content generation but before aggregation.
+    Finds real image URLs for slides using the tiered image service.
+    Runs image fetches in PARALLEL — no sleep(), no blocking.
+    Priority: Unsplash API → Pexels API → DuckDuckGo → None
     """
     slides = state.get("slides", [])
     if not state.get("include_images") or not slides:
         return {"slides": slides}
 
-    print(f"[IMAGE AGENT] Searching for images for {len(slides)} slides...")
-    
+    from services.image_service import fetch_image_for_query
+
+    print(f"[IMAGE AGENT] Searching images for {len(slides)} slides (parallel)...")
+
+    # Collect queries
+    queries: Dict[int, str] = {}
+    for i, slide in enumerate(slides):
+        query = slide.get("image_search_query")
+        url   = slide.get("image_url")
+
+        if url:
+            queries[i] = url  # Already have a URL — just verify/download
+        elif query:
+            queries[i] = query
+        elif state.get("image_mode") == "auto":
+            # Auto mode: use heading as fallback query
+            heading = slide.get("heading", "")
+            if heading:
+                queries[i] = heading
+
+    if not queries:
+        return {"slides": slides}
+
+    # Parallel fetch — no time.sleep()
+    results: Dict[int, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        future_to_idx = {
+            executor.submit(fetch_image_for_query, q): idx
+            for idx, q in queries.items()
+        }
+        for future in concurrent.futures.as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                stream = future.result()
+                if stream:
+                    # Store the query/url so ppt_utils can fetch it again
+                    results[idx] = queries[idx]
+            except Exception as e:
+                print(f"[IMAGE AGENT] Error fetching slide {idx}: {e}")
+
+    # Attach confirmed image sources back to slides
     updated_slides = []
-    with DDGS() as ddgs:
-        for slide in slides:
-            # We only search if an explicit query was provided by the writer agent
-            query = slide.get("image_search_query")
-            
-            # Fallback to heading in 'auto' mode if no query exists but slide is 'split'
-            if not query and state.get("image_mode") == "auto" and slide.get("layout") == "split":
-                query = slide.get("heading")
-
-            if query:
-                try:
-                    # Throttling to avoid 403 Ratelimit
-                    if updated_slides:
-                        time.sleep(2)  # Delay between requests
-
-                    print(f"  - Searching: '{query}'")
-                    
-                    try:
-                        results = list(ddgs.images(query, max_results=5))
-                    except Exception as inner_e:
-                        if "403" in str(inner_e) or "Ratelimit" in str(inner_e):
-                            print(f"    [!] Ratelimit hit! Waiting 5s and retrying with simpler query...")
-                            time.sleep(5)
-                            # Retry with generic query
-                            generic_query = slide.get("heading", query)
-                            results = list(ddgs.images(generic_query, max_results=3))
-                        else:
-                            raise inner_e
-
-                    if results:
-                        slide["image_url"] = results[0].get("image")
-                        slide["image_source"] = "duckduckgo"
-                        print(f"    Found: {slide['image_url'][:60]}...")
-                except Exception as e:
-                    print(f"    Warning: Skipping search for '{query}' due to error: {e}")
-            
-            updated_slides.append(slide)
+    for i, slide in enumerate(slides):
+        if i in results:
+            slide = dict(slide)
+            if results[i].startswith(("http://", "https://")):
+                slide["image_url"] = results[i]
+            else:
+                slide["image_search_query"] = results[i]
+            # Re-enforce layout after image confirmation
+            slide["layout"] = "split"
+        updated_slides.append(slide)
 
     return {"slides": updated_slides}
 
@@ -365,21 +455,16 @@ def image_searcher_node(state: AgentState):
 # ---------------- REFINER ---------------- #
 
 def refine_node(state: AgentState):
-
-    slides = state["slides"]
+    """Trim any remaining over-long content as a safety net."""
+    slides = state.get("slides", [])
 
     for slide in slides:
-
-        text = ""
-
-        # Safely handle missing content
-        for item in slide.get("content", []):
-            text += item.get("text", "")
-
-        if len(text) > 500:
-
-            for item in slide.get("content", []):
-                item["text"] = item.get("text", "")[:80]
+        content = slide.get("content", [])
+        for item in content:
+            text = item.get("text", "")
+            words = text.split()
+            if len(words) > 15:
+                item["text"] = " ".join(words[:15]) + "..."
 
     return {"slides": slides}
 
@@ -387,19 +472,13 @@ def refine_node(state: AgentState):
 # ---------------- CHECK LENGTH ---------------- #
 
 def check_length(state: AgentState):
-
-    slides = state["slides"]
+    slides = state.get("slides", [])
 
     for slide in slides:
-
-        text = ""
-
-        # Safely handle missing content
         for item in slide.get("content", []):
-            text += item.get("text", "")
-
-        if len(text) > 500:
-            return "refine"
+            text = item.get("text", "")
+            if len(text.split()) > 15:
+                return "refine"
 
     return "aggregator"
 

@@ -41,45 +41,20 @@ def hex_to_rgb(hex_str, default=None):
 
 def fetch_image(url_or_query):
     """
-    Fetches an image stream. 
-    If *url_or_query* is a URL, it downloads it directly.
-    Otherwise, it treats it as a query and tries several fallback sources.
-    Returns BytesIO or None.
+    Fetches an image stream using the tiered image service.
+    Delegates to services/image_service.py:
+      Unsplash → Pexels → DuckDuckGo → None
+    Returns BytesIO or None. Never raises.
     """
     if not url_or_query:
         return None
-        
-    is_url = url_or_query.startswith(("http://", "https://"))
-    
-    if is_url:
-        sources = [url_or_query]
-    else:
-        safe_query = urllib.parse.quote(url_or_query)
-        sources = [
-            f"https://loremflickr.com/800/600/{safe_query}/all",
-            f"https://loremflickr.com/800/600/{safe_query}",
-            f"https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=800&q=80"
-        ]
-    
-    print(f"--- DEBUG: Fetching image for: {url_or_query}")
-    
-    for url in sources:
-        try:
-            # Use a slightly longer timeout for the first attempt if it's a direct URL
-            tout = 15 if is_url else 10
-            response = requests.get(url, timeout=tout, allow_redirects=True)
-            if response.status_code == 200:
-                content_type = response.headers.get('Content-Type', '').lower()
-                if 'image' in content_type:
-                    print(f"--- DEBUG: Successfully fetched image from: {url}")
-                    return BytesIO(response.content)
-                else:
-                    print(f"--- DEBUG: URL {url} returned non-image content-type: {content_type}")
-        except Exception as e:
-            print(f"--- DEBUG: Error fetching from {url}: {e}")
-            continue
-
-    return None
+    try:
+        from services.image_service import fetch_image_for_query
+        print(f"--- DEBUG: Fetching image for: {url_or_query[:60]}")
+        return fetch_image_for_query(url_or_query)
+    except Exception as e:
+        print(f"--- DEBUG: fetch_image error: {e}")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -796,4 +771,353 @@ def create_ppt(data, filename="presentation.pptx", image_mode="manual"):
     # Save
     output_path = os.path.abspath(filename)
     prs.save(output_path)
+    return output_path
+
+
+# ===========================================================================
+# IN-PLACE PPT PATCHING ENGINE
+# Preserves original design; only modifies text/visuals as instructed.
+# ===========================================================================
+
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+# Shape types that count as "visuals" for layout decisions
+_VISUAL_MSO_TYPES = {MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.LINKED_PICTURE}
+
+
+def _count_visuals(slide):
+    """Return (pictures, charts, tables) counts for a slide."""
+    pics   = sum(1 for s in slide.shapes if s.shape_type in _VISUAL_MSO_TYPES)
+    charts = sum(1 for s in slide.shapes if s.has_chart)
+    tables = sum(1 for s in slide.shapes if s.has_table)
+    return pics, charts, tables
+
+
+def _get_body_shape(slide):
+    """Find the largest non-title text frame shape on the slide."""
+    title = slide.shapes.title
+    candidates = [s for s in slide.shapes if s.has_text_frame and s != title]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda s: s.width * s.height)
+
+
+def _sample_font_props(text_frame):
+    """Sample font properties from the first available run in a text frame."""
+    props = {}
+    for para in text_frame.paragraphs:
+        if para.runs:
+            run = para.runs[0]
+            try:
+                props['size'] = run.font.size
+            except Exception:
+                pass
+            try:
+                props['bold'] = run.font.bold
+            except Exception:
+                pass
+            try:
+                props['italic'] = run.font.italic
+            except Exception:
+                pass
+            try:
+                props['name'] = run.font.name
+            except Exception:
+                pass
+            try:
+                if run.font.color and run.font.color.type:
+                    props['color'] = run.font.color.rgb
+            except Exception:
+                pass
+            break
+    return props
+
+
+def _sample_and_rewrite_text(text_frame, new_items):
+    """
+    Update a text frame's content while preserving the original font style.
+    Only the paragraph text is changed — the shape, fill, position are untouched.
+    """
+    props = _sample_font_props(text_frame)
+    text_frame.clear()  # Removes paragraph content only, NOT the shape itself
+
+    for idx, item in enumerate(new_items):
+        text  = item.get("text", "")
+        level = item.get("level", 0)
+
+        para = text_frame.paragraphs[0] if idx == 0 else text_frame.add_paragraph()
+        para.text  = text
+        para.level = level
+
+        # Re-apply sampled font style
+        if props.get('size'):
+            para.font.size = props['size']
+        if props.get('bold') is not None:
+            para.font.bold = props['bold']
+        if props.get('italic') is not None:
+            para.font.italic = props['italic']
+        if props.get('name'):
+            para.font.name = props['name']
+        if props.get('color'):
+            para.font.color.rgb = props['color']
+
+
+def _remove_nth_shape_of_type(slide, shape_type_str, index=0):
+    """
+    Remove the Nth shape of the specified type from a slide via XML manipulation.
+    shape_type_str: 'picture', 'chart', 'table', 'smartart'
+    Returns True if found and removed, False otherwise.
+    """
+    matching = []
+    for shape in slide.shapes:
+        if shape_type_str == 'picture' and shape.shape_type in _VISUAL_MSO_TYPES:
+            matching.append(shape)
+        elif shape_type_str == 'chart' and shape.has_chart:
+            matching.append(shape)
+        elif shape_type_str == 'table' and shape.has_table:
+            matching.append(shape)
+        elif shape_type_str == 'smartart' and shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            matching.append(shape)
+
+    if index < len(matching):
+        sp_el = matching[index]._element
+        sp_el.getparent().remove(sp_el)
+        print(f"--- PATCH: Removed {shape_type_str}[{index}]")
+        return True
+
+    print(f"--- PATCH: {shape_type_str}[{index}] not found (only {len(matching)} available)")
+    return False
+
+
+def _reflow_slide_content(slide, prs, was_visual_added=False, newly_added_shape=None):
+    """
+    Auto-resize the text body after a visual element is added or removed:
+      - If no visuals remain on slide → expand text body to full available width
+      - If a visual was just added AND text was previously full-width → shrink text
+        to left 50% and position the new visual in the right 50%
+    """
+    W            = prs.slide_width
+    RIGHT_MARGIN = Inches(0.5)
+    GAP          = Inches(0.25)
+
+    pics, charts, tables = _count_visuals(slide)
+    total_visuals = pics + charts + tables
+
+    body_shape = _get_body_shape(slide)
+    if not body_shape:
+        return
+
+    available_width = W - body_shape.left - RIGHT_MARGIN
+    half_width      = int(available_width * 0.50)
+
+    if total_visuals == 0:
+        # All visuals removed — expand text to full available width
+        body_shape.width = int(available_width)
+        print(f"--- REFLOW: No visuals remaining, expanded text to full width")
+
+    elif was_visual_added and newly_added_shape is not None:
+        # A visual was just added — check if text needs to be shrunk
+        is_currently_full_width = body_shape.width > int(available_width * 0.60)
+        if is_currently_full_width:
+            body_shape.width = half_width
+            print(f"--- REFLOW: Shrunk text to left 50% to make room for new visual")
+
+        # Position the newly added shape in the right half
+        visual_left   = body_shape.left + body_shape.width + int(GAP)
+        visual_top    = body_shape.top
+        visual_width  = W - visual_left - RIGHT_MARGIN
+        visual_height = body_shape.height
+
+        try:
+            newly_added_shape.left   = int(visual_left)
+            newly_added_shape.top    = int(visual_top)
+            newly_added_shape.width  = int(visual_width)
+            newly_added_shape.height = int(visual_height)
+            print(f"--- REFLOW: Positioned new visual in right 50%")
+        except Exception as e:
+            print(f"--- REFLOW: Could not reposition new shape: {e}")
+
+
+# ---------------------------------------------------------------------------
+# extract_slide_inventory — read text + shape counts from an uploaded PPTX
+# ---------------------------------------------------------------------------
+
+def extract_slide_inventory(pptx_path):
+    """
+    Extract text content and visual element counts from each slide.
+    Returns a list of slide dicts with:
+      - heading: str
+      - content: [{text, level}]
+      - shapes: {images, charts, tables, smartarts}
+    """
+    prs    = Presentation(pptx_path)
+    slides = []
+
+    for slide in prs.slides:
+        # Title
+        heading = ""
+        if slide.shapes.title and slide.shapes.title.has_text_frame:
+            heading = slide.shapes.title.text_frame.text.strip()
+        if not heading:
+            heading = "Untitled Slide"
+
+        # Body text
+        content = []
+        for shape in slide.shapes:
+            if shape.has_text_frame and shape != slide.shapes.title:
+                for para in shape.text_frame.paragraphs:
+                    text = para.text.strip()
+                    if text:
+                        content.append({"text": text, "level": para.level})
+
+        # Shape counts
+        pics      = sum(1 for s in slide.shapes if s.shape_type in _VISUAL_MSO_TYPES)
+        charts    = sum(1 for s in slide.shapes if s.has_chart)
+        tables    = sum(1 for s in slide.shapes if s.has_table)
+        smartarts = sum(1 for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.GROUP)
+
+        slides.append({
+            "heading": heading,
+            "content": content,
+            "shapes": {
+                "images":    pics,
+                "charts":    charts,
+                "tables":    tables,
+                "smartarts": smartarts
+            }
+        })
+
+    return slides
+
+
+# ---------------------------------------------------------------------------
+# patch_ppt — main driver: apply structured action list to an existing PPTX
+# ---------------------------------------------------------------------------
+
+def patch_ppt(original_path, slide_actions, output_filename):
+    """
+    Patches an existing PPTX file based on a per-slide action list.
+    Everything not referenced by an action is completely preserved.
+
+    slide_actions: list of {
+        "slide_index": int (0-based),
+        "actions": [
+            {"type": "update_text", "heading": str, "content": [{text, level}]},
+            {"type": "remove_image",   "index": int},
+            {"type": "remove_chart",   "index": int},
+            {"type": "remove_table",   "index": int},
+            {"type": "remove_smartart","index": int},
+            {"type": "add_image",  "query": str},
+            {"type": "add_chart",  "chart": {type, title, categories, series}},
+            {"type": "add_table",  "table": [[...],[...]]},
+        ]
+    }
+    """
+    print(f"--- PATCH: Loading original from {original_path}")
+    prs = Presentation(original_path)
+    W   = prs.slide_width
+    H   = prs.slide_height
+
+    for slide_action in slide_actions:
+        slide_idx = slide_action.get("slide_index", 0)
+        actions   = slide_action.get("actions", [])
+
+        if slide_idx >= len(prs.slides):
+            print(f"--- PATCH: slide_index {slide_idx} out of range ({len(prs.slides)} slides), skipping")
+            continue
+
+        slide        = prs.slides[slide_idx]
+        title_shape  = slide.shapes.title
+        body_shape   = _get_body_shape(slide)
+
+        newly_added_visual = None
+        was_visual_added   = False
+
+        for action in actions:
+            atype = action.get("type", "")
+            print(f"--- PATCH: slide {slide_idx} → {atype}")
+
+            # ── Update text ──────────────────────────────────────────────────
+            if atype == "update_text":
+                new_heading = action.get("heading")
+                new_content = action.get("content", [])
+
+                if new_heading and title_shape and title_shape.has_text_frame:
+                    _sample_and_rewrite_text(
+                        title_shape.text_frame,
+                        [{"text": new_heading, "level": 0}]
+                    )
+
+                # Re-fetch body_shape in case slide was modified
+                body_shape = _get_body_shape(slide)
+                if new_content and body_shape:
+                    _sample_and_rewrite_text(body_shape.text_frame, new_content)
+
+            # ── Remove shapes ────────────────────────────────────────────────
+            elif atype == "remove_image":
+                _remove_nth_shape_of_type(slide, "picture", action.get("index", 0))
+
+            elif atype == "remove_chart":
+                _remove_nth_shape_of_type(slide, "chart", action.get("index", 0))
+
+            elif atype == "remove_table":
+                _remove_nth_shape_of_type(slide, "table", action.get("index", 0))
+
+            elif atype == "remove_smartart":
+                _remove_nth_shape_of_type(slide, "smartart", action.get("index", 0))
+
+            # ── Add image ────────────────────────────────────────────────────
+            elif atype == "add_image":
+                query = action.get("query", "")
+                if query:
+                    img_stream = fetch_image(query)
+                    if img_stream:
+                        try:
+                            # Placeholder position — reflow will correct this
+                            temp_shape = slide.shapes.add_picture(
+                                img_stream,
+                                Inches(7), Inches(1.5), Inches(5), Inches(4)
+                            )
+                            newly_added_visual = temp_shape
+                            was_visual_added   = True
+                            print(f"--- PATCH: Added image for query '{query}'")
+                        except Exception as e:
+                            print(f"--- PATCH: Error adding image: {e}")
+                    else:
+                        print(f"--- PATCH: No image found for query '{query}'")
+
+            # ── Add chart ────────────────────────────────────────────────────
+            elif atype == "add_chart":
+                chart_data = action.get("chart", {})
+                if chart_data:
+                    # Placeholder position — reflow will correct this
+                    chart_shape = _add_chart(
+                        slide, chart_data,
+                        Inches(7), Inches(1.5), Inches(5.5), Inches(4.5)
+                    )
+                    if chart_shape:
+                        newly_added_visual = chart_shape
+                        was_visual_added   = True
+
+            # ── Add table ────────────────────────────────────────────────────
+            elif atype == "add_table":
+                table_data = action.get("table", [])
+                if table_data:
+                    table_shape = _add_table(
+                        slide, table_data,
+                        Inches(7), Inches(1.5), Inches(5.5), Inches(4.5)
+                    )
+                    if table_shape:
+                        newly_added_visual = table_shape
+                        was_visual_added   = True
+
+            else:
+                print(f"--- PATCH: Unknown action type '{atype}', skipping")
+
+        # ── Auto-reflow after all actions on this slide ───────────────────
+        _reflow_slide_content(slide, prs, was_visual_added, newly_added_visual)
+
+    output_path = os.path.abspath(output_filename)
+    prs.save(output_path)
+    print(f"--- PATCH: Saved patched file → {output_path}")
     return output_path

@@ -4,6 +4,8 @@ import ppt_utils
 import json
 import os
 import time
+import uuid
+import shutil
 import tempfile
 from rag_engine import ingest_document
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -12,14 +14,19 @@ import atexit
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24))
 
+# In-memory session store for uploaded PPT files (session_id -> session dict)
+PPT_SESSIONS = {}
+
 # --- Background Cleanup Task ---
 def cleanup_old_files():
-    """Deletes .pptx files older than 1 hour."""
+    """Deletes .pptx files older than 1 hour and expired PPT sessions."""
     now = time.time()
     cutoff = now - 3600  # 1 hour
     directory = os.path.dirname(os.path.abspath(__file__))
     for filename in os.listdir(directory):
-        if filename.endswith(".pptx") and filename.startswith("presentation_"):
+        if filename.endswith(".pptx") and (
+            filename.startswith("presentation_") or filename.startswith("patched_")
+        ):
             filepath = os.path.join(directory, filename)
             try:
                 if os.path.getmtime(filepath) < cutoff:
@@ -27,6 +34,22 @@ def cleanup_old_files():
                     print(f"Deleted old file: {filename}")
             except Exception as e:
                 print(f"Error checking/deleting {filename}: {e}")
+
+    # Also clean up expired PPT sessions (temp files in system temp dir)
+    expired = [
+        sid for sid, sess in list(PPT_SESSIONS.items())
+        if now - sess.get("created", now) > 3600
+    ]
+    for sid in expired:
+        sess = PPT_SESSIONS.pop(sid, {})
+        for key in ("path", "last_patched"):
+            p = sess.get(key)
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        print(f"Cleaned up expired session: {sid}")
 
 # Initialize Scheduler
 scheduler = BackgroundScheduler()
@@ -119,7 +142,10 @@ def generate_ppt():
         }
         
         # 1. Invoke LangGraph Workflow
-        result = graph.invoke(initial_state_and_prefs["initial_state"])
+        result = graph.invoke({
+            **initial_state_and_prefs["initial_state"],
+            "design_prefs": initial_state_and_prefs["design_prefs"]
+        })
         json_content = result.get("final_output")
         
         if not json_content:
@@ -319,53 +345,203 @@ def generate_final():
 
 @app.route("/import_ppt", methods=["POST"])
 def import_ppt():
-    """Parses an uploaded PPTX and returns JSON slides."""
+    """Parses an uploaded PPTX, stores it for in-place editing, returns JSON slides + session_id."""
     if 'file' not in request.files:
         return jsonify({"error": "No file"}), 400
     file = request.files['file']
-    temp_path = os.path.join(tempfile.gettempdir(), os.urandom(8).hex() + "_" + file.filename)
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    session_id = str(uuid.uuid4())
+    temp_dir   = tempfile.gettempdir()
+    temp_path  = os.path.join(temp_dir, f"ppt_session_{session_id}.pptx")
     file.save(temp_path)
-    
+
     try:
-        from pptx import Presentation
-        prs = Presentation(temp_path)
-        slides = []
-        for slide in prs.slides:
-            heading = slide.shapes.title.text if slide.shapes.title else "Untitled Slide"
-            content = []
-            for shape in slide.shapes:
-                if shape.has_text_frame and shape != slide.shapes.title:
-                    for paragraph in shape.text_frame.paragraphs:
-                        content.append({"text": paragraph.text, "level": paragraph.level})
-            slides.append({"heading": heading, "content": content})
-            
+        slides = ppt_utils.extract_slide_inventory(temp_path)
+
+        PPT_SESSIONS[session_id] = {
+            "path":         temp_path,
+            "filename":     file.filename,
+            "created":      time.time(),
+            "last_patched": None,
+            "last_patched_filename": None,
+        }
+
         return jsonify({
-            "title": file.filename.replace(".pptx", ""),
-            "theme": {"font": "Calibri"},
-            "slides": slides
+            "title":       file.filename.replace(".pptx", "").replace(".PPTX", ""),
+            "slides":      slides,
+            "session_id":  session_id,
+            "is_imported": True
         })
     except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return jsonify({"error": str(e)}), 500
-    finally:
-        if os.path.exists(temp_path): os.remove(temp_path)
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    # Determine the path. 
-    # Current implementation of create_ppt saves to current working directory or absolute path.
-    # ppt_utils.create_ppt saves to os.path.abspath(filename) if we passed just filename.
-    # So valid check if file exists in current dir.
-    # SECURITY NOTE: In production, sanitize filename to prevent directory traversal.
-    file_path = os.path.abspath(filename)
+    # SECURITY: only allow filenames without path separators
+    safe_name = os.path.basename(filename)
+    file_path = os.path.abspath(safe_name)
     if os.path.exists(file_path):
         return send_file(
-            file_path, 
+            file_path,
             as_attachment=True,
-            download_name=filename,
+            download_name=safe_name,
             mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation"
         )
-    else:
-        return "File not found", 404
+    # Also check temp dir for session patched files
+    temp_path = os.path.join(tempfile.gettempdir(), safe_name)
+    if os.path.exists(temp_path):
+        return send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=safe_name,
+            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
+    return "File not found", 404
+
+
+@app.route("/update_ppt_live", methods=["POST"])
+def update_ppt_live():
+    """AI-powered in-place PPTX editing. Uses session to preserve original design."""
+    try:
+        from agent_graph import llm, extract_json
+
+        session_id          = request.form.get("session_id")
+        instruction         = request.form.get("instruction")
+        current_slides_json = request.form.get("current_slides")
+
+        if not session_id or not instruction:
+            return jsonify({"error": "session_id and instruction are required"}), 400
+
+        if session_id not in PPT_SESSIONS:
+            return jsonify({"error": "Session expired or not found. Please re-upload your file."}), 404
+
+        sess = PPT_SESSIONS[session_id]
+        original_path = sess["path"]
+
+        if not os.path.exists(original_path):
+            return jsonify({"error": "Session file missing. Please re-upload."}), 404
+
+        current_slides = json.loads(current_slides_json) if current_slides_json else []
+        slides_context = json.dumps(current_slides, indent=2)
+
+        prompt = f"""You are a PowerPoint editor. Below is the current presentation state (0-indexed slides with text content and shape counts). Apply the user's instruction.
+
+Current Slides:
+{slides_context}
+
+User Instruction: "{instruction}"
+
+Return ONLY a JSON array of slide action objects. Each object:
+- "slide_index": 0-based integer index of the slide to modify
+- "actions": array of action objects
+
+Available action types:
+1. {{"type": "update_text", "heading": "New Title", "content": [{{"text": "bullet point", "level": 0}}]}}
+   Change slide title and/or bullet points.
+
+2. {{"type": "remove_image", "index": 0}}
+   Remove the Nth image from the slide (0-indexed). Check the slide's shapes.images count first.
+
+3. {{"type": "remove_chart", "index": 0}}
+   Remove the Nth chart from the slide (0-indexed).
+
+4. {{"type": "remove_table", "index": 0}}
+   Remove the Nth table from the slide (0-indexed).
+
+5. {{"type": "remove_smartart", "index": 0}}
+   Remove the Nth SmartArt/diagram from the slide (0-indexed).
+
+6. {{"type": "add_image", "query": "descriptive 3-5 word photo search query"}}
+   Add a new relevant image fetched from the web.
+
+7. {{"type": "add_chart", "chart": {{"type": "column", "title": "Chart Title", "categories": ["A","B"], "series": [{{"name": "Series1", "values": [10,20]}}]}}}}
+   Add a new chart (type: column/pie/line/bar).
+
+8. {{"type": "add_table", "table": [["Header1","Header2"],["Val1","Val2"]]}}
+   Add a new data table.
+
+Rules:
+- Only include slides that need changes. Unchanged slides must NOT appear in the response.
+- If a slide needs both text and visual changes, include all action types in a single slide object.
+- Use shapes.images / shapes.charts etc. to know what currently exists before removing.
+- When adding an image, write a descriptive, specific search query (e.g. "renewable solar energy farm" not just "energy").
+- Do not include markdown or explanation. Return ONLY the JSON array.
+
+Example:
+[
+  {{"slide_index": 1, "actions": [
+    {{"type": "remove_image", "index": 0}},
+    {{"type": "update_text", "heading": "Updated Title", "content": [{{"text": "Key point", "level": 0}}]}}
+  ]}}
+]"""
+
+        response     = llm.invoke(prompt)
+        slide_actions = extract_json(response.content)
+
+        if not slide_actions:
+            return jsonify({"error": "AI failed to generate valid actions. Try rephrasing your instruction."}), 500
+
+        # If AI wrapped actions in an object, unwrap
+        if isinstance(slide_actions, dict):
+            slide_actions = slide_actions.get("actions", slide_actions.get("slides", []))
+
+        if not isinstance(slide_actions, list):
+            return jsonify({"error": "Unexpected AI response format"}), 500
+
+        # Apply the patch to the current working file
+        out_filename = f"patched_{session_id[:8]}_{os.urandom(3).hex()}.pptx"
+        out_path     = ppt_utils.patch_ppt(original_path, slide_actions, out_filename)
+
+        # The patched file becomes the new base for future patches (incremental)
+        shutil.copy2(out_path, original_path)
+
+        # Update session metadata
+        if sess.get("last_patched") and os.path.exists(sess["last_patched"]):
+            try:
+                os.remove(sess["last_patched"])
+            except Exception:
+                pass
+        sess["last_patched"]          = out_path
+        sess["last_patched_filename"] = out_filename
+
+        # Re-extract updated inventory from the patched file
+        updated_slides = ppt_utils.extract_slide_inventory(out_path)
+        download_url   = url_for('download_file', filename=out_filename)
+
+        return jsonify({
+            "slides":          updated_slides,
+            "downloadUrl":     download_url,
+            "actions_applied": len(slide_actions)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+            return jsonify({"error": "Gemini API Quota Exceeded. Please try again later."}), 429
+        return jsonify({"error": error_msg}), 500
+
+
+@app.route("/clear_session", methods=["POST"])
+def clear_session():
+    """Deletes a PPT session and its associated temp files."""
+    session_id = request.form.get("session_id")
+    if session_id and session_id in PPT_SESSIONS:
+        sess = PPT_SESSIONS.pop(session_id)
+        for key in ("path", "last_patched"):
+            p = sess.get(key)
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+    return jsonify({"status": "ok"})
+
 
 if __name__ == "__main__":
     app.run(debug=False)
