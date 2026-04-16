@@ -30,9 +30,9 @@ class AgentState(TypedDict):
     tone: str
     audience: str
     additional_instructions: str
-    outline: Annotated[List[str], list_reducer]
+    outline: List[str]
     theme: Dict[str, Any]
-    slides: Annotated[List[Dict[str, Any]], list_reducer]
+    slides: List[Dict[str, Any]]
     final_output: str
     retry_count: int
     design_prefs: Dict[str, Any]   # passed through from app.py to ppt_utils

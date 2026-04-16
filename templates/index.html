@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <style>
         :root {
             --primary: #4F46E5;
@@ -33,10 +33,10 @@
         body {
             font-family: 'Outfit', sans-serif;
             background-color: var(--bg-dark);
-            background-image: 
-                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            background-image:
+                radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
             color: var(--text-main);
             display: flex;
             justify-content: center;
@@ -59,11 +59,23 @@
             text-align: center;
             position: relative;
             animation: containerEntry 0.6s ease-out;
+            transition: max-width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .container.expanded {
+            max-width: 1100px;
         }
 
         @keyframes containerEntry {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* Hero Header */
@@ -152,8 +164,15 @@
         }
 
         @keyframes stepEntry {
-            from { opacity: 0; transform: translateX(10px); }
-            to { opacity: 1; transform: translateX(0); }
+            from {
+                opacity: 0;
+                transform: translateX(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
         }
 
         .step-content.active {
@@ -219,10 +238,10 @@
             font-weight: 500;
         }
 
-        input[type="text"], 
-        input[type="number"], 
-        input[type="url"], 
-        select, 
+        input[type="text"],
+        input[type="number"],
+        input[type="url"],
+        select,
         textarea {
             width: 100%;
             padding: 12px 16px;
@@ -236,7 +255,9 @@
             margin-bottom: 1.2rem;
         }
 
-        input:focus, select:focus, textarea:focus {
+        input:focus,
+        select:focus,
+        textarea:focus {
             outline: none;
             border-color: var(--primary);
             background: rgba(0, 0, 0, 0.3);
@@ -297,7 +318,7 @@
             transition: var(--transition);
             position: relative;
             overflow: hidden;
-            box-shadow: inset 0 0 8px rgba(0,0,0,0.12);
+            box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.12);
         }
 
         /* Left accent band */
@@ -365,7 +386,9 @@
         }
 
         @media (max-width: 480px) {
-            .theme-grid { grid-template-columns: repeat(2, 1fr); }
+            .theme-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
 
         /* Action Buttons */
@@ -497,9 +520,17 @@
         }
 
         @media (max-width: 480px) {
-            .container { padding: 1.5rem; }
-            .source-grid { grid-template-columns: 1fr; }
-            .theme-grid { grid-template-columns: 1fr; }
+            .container {
+                padding: 1.5rem;
+            }
+
+            .source-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .theme-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -523,7 +554,7 @@
             <!-- STEP 1: SOURCE -->
             <div class="step-content active" id="step1">
                 <div class="step-title"><i class="fa-solid fa-database"></i> Choose Your Source</div>
-                
+
                 <div class="source-grid">
                     <div class="source-card selected" onclick="selectSource('topic_only', this)">
                         <i class="fa-solid fa-lightbulb"></i>
@@ -571,14 +602,16 @@
                     <div id="pptxGroup" style="display: none;">
                         <label class="label">Select Existing Presentation</label>
                         <input type="file" id="pptxFile" accept=".pptx">
-                        <button class="btn-secondary" style="margin-top: 10px; width: 100%;" onclick="importExistingPPT()">
+                        <button class="btn-secondary" style="margin-top: 10px; width: 100%;"
+                            onclick="importExistingPPT()">
                             <i class="fa-solid fa-file-import"></i> Parse & Load Slides
                         </button>
                     </div>
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-primary" onclick="nextStep()">Continue <i class="fa-solid fa-arrow-right"></i></button>
+                    <button class="btn-primary" onclick="nextStep()">Continue <i
+                            class="fa-solid fa-arrow-right"></i></button>
                 </div>
             </div>
 
@@ -606,22 +639,28 @@
                 <input type="text" id="audienceInput" placeholder="e.g., Executive Board members">
 
                 <label class="label">Additional Instructions (Optional)</label>
-                <textarea id="instructionsInput" placeholder="Keep it concise with lots of visuals..." rows="2"></textarea>
+                <textarea id="instructionsInput" placeholder="Keep it concise with lots of visuals..."
+                    rows="2"></textarea>
 
-                <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                <div
+                    style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="includeImages" onchange="toggleImages(this.checked)"> 
+                        <input type="checkbox" id="includeImages" onchange="toggleImages(this.checked)">
                         <span>Smart Image Enrichment</span>
                     </label>
                     <div id="imgModes" style="display: none; margin-top: 12px; margin-left: 26px;">
-                        <label style="margin-right: 15px; font-size: 0.85rem;"><input type="radio" name="imageMode" value="manual" checked> Manual</label>
-                        <label style="font-size: 0.85rem;"><input type="radio" name="imageMode" value="auto"> Automatic AI</label>
+                        <label style="margin-right: 15px; font-size: 0.85rem;"><input type="radio" name="imageMode"
+                                value="manual" checked> Manual</label>
+                        <label style="font-size: 0.85rem;"><input type="radio" name="imageMode" value="auto"> Automatic
+                            AI</label>
                     </div>
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back</button>
-                    <button class="btn-primary" onclick="nextStep()">Next Aspect <i class="fa-solid fa-palette"></i></button>
+                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i>
+                        Back</button>
+                    <button class="btn-primary" onclick="nextStep()">Next Aspect <i
+                            class="fa-solid fa-palette"></i></button>
                 </div>
             </div>
 
@@ -663,31 +702,42 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back</button>
-                    <button id="generateBtn" class="btn-primary" onclick="startGeneration()">Analyze & Draft <i class="fa-solid fa-wand-magic-sparkles"></i></button>
+                    <button class="btn-secondary" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i>
+                        Back</button>
+                    <button id="generateBtn" class="btn-primary" onclick="startGeneration()">Analyze & Draft <i
+                            class="fa-solid fa-wand-magic-sparkles"></i></button>
                 </div>
             </div>
 
             <!-- STEP 4: LIVE PREVIEW & EDIT -->
             <div class="step-content" id="step4">
                 <div class="step-title"><i class="fa-solid fa-eye"></i> Live Preview & Polish</div>
-                <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 1.5rem;">Click on any text to edit. Theme styles are applied live.</p>
-                
-                <div id="aiUpdateContainer" style="margin-bottom: 20px; background: rgba(79, 70, 229, 0.1); padding: 15px; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.3);">
-                    <label class="label" style="color: var(--primary-light);"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Refinement</label>
+                <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 1.5rem;">Click on any text to edit.
+                    Theme styles are applied live.</p>
+
+                <div id="aiUpdateContainer"
+                    style="margin-bottom: 20px; background: rgba(79, 70, 229, 0.1); padding: 15px; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.3);">
+                    <label class="label" style="color: var(--primary-light);"><i
+                            class="fa-solid fa-wand-magic-sparkles"></i> AI Refinement</label>
                     <div style="display: flex; gap: 10px;">
-                        <textarea id="aiUpdateInstruction" placeholder="e.g. 'Remove the image from slide 2' or 'Add a bar chart to slide 3' or 'Make all titles more catchy'" rows="2" style="margin-bottom: 0; flex: 1;"></textarea>
-                        <button id="aiUpdateBtn" class="btn-primary" style="flex: none; padding: 0 20px;" onclick="updateWithAI()">Update</button>
+                        <textarea id="aiUpdateInstruction"
+                            placeholder="e.g. 'Remove the image from slide 2' or 'Add a bar chart to slide 3' or 'Make all titles more catchy'"
+                            rows="2" style="margin-bottom: 0; flex: 1;"></textarea>
+                        <button id="aiUpdateBtn" class="btn-primary" style="flex: none; padding: 0 20px;"
+                            onclick="updateWithAI()">Update</button>
                     </div>
                 </div>
 
-                <div id="slidePreviewContainer" style="display: flex; flex-direction: column; gap: 20px; max-height: 500px; overflow-y: auto; padding: 10px;">
+                <div id="slidePreviewContainer"
+                    style="display: flex; flex-direction: column; gap: 20px; max-height: 70vh; overflow-y: auto; padding: 10px;">
                     <!-- Slides rendered here -->
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-secondary" id="backToDesignBtn" onclick="prevStep()"><i class="fa-solid fa-arrow-left"></i> Back To Design</button>
-                    <button id="finalDownloadBtn" class="btn-primary" onclick="finalizeAndDownload()">Finalize & Download PPTX <i class="fa-solid fa-file-export"></i></button>
+                    <button class="btn-secondary" id="backToDesignBtn" onclick="prevStep()"><i
+                            class="fa-solid fa-arrow-left"></i> Back To Design</button>
+                    <button id="finalDownloadBtn" class="btn-primary" onclick="finalizeAndDownload()">Finalize &
+                        Download PPTX <i class="fa-solid fa-file-export"></i></button>
                 </div>
             </div>
         </div>
@@ -696,7 +746,8 @@
             <div id="statusText">AI is initializing...</div>
             <div class="loading-steps">
                 <div class="l-step" id="l1"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing Sources</div>
-                <div class="l-step" id="l2"><i class="fa-solid fa-circle-notch fa-spin"></i> Synthesizing Knowledge</div>
+                <div class="l-step" id="l2"><i class="fa-solid fa-circle-notch fa-spin"></i> Synthesizing Knowledge
+                </div>
                 <div class="l-step" id="l3"><i class="fa-solid fa-circle-notch fa-spin"></i> Rendering Design</div>
             </div>
         </div>
@@ -716,25 +767,25 @@
 
         // ── 12 SlideModel-Inspired Themes ──────────────────────────────────
         const themes = [
-            { id: "professional_blue.pptx",  name: "Professional",   badge: "Light",  bg: "#FFFFFF", surface: "#EBF3FF", accent: "#1565C0", text: "#212121", titleColor: "#1565C0", textColor: "#212121" },
-            { id: "executive_dark.pptx",     name: "Executive Dark", badge: "Dark",   bg: "#1A1A2E", surface: "#16213E", accent: "#E94560", text: "#EAEAEA", titleColor: "#E94560", textColor: "#EAEAEA" },
-            { id: "teal_modern.pptx",        name: "Teal Modern",    badge: "Light",  bg: "#F0FDFA", surface: "#CCFBF1", accent: "#0D9488", text: "#134E4A", titleColor: "#0D9488", textColor: "#134E4A" },
-            { id: "sunset_coral.pptx",       name: "Sunset Coral",   badge: "Warm",   bg: "#FFF5F5", surface: "#FED7D7", accent: "#E53E3E", text: "#2D3748", titleColor: "#E53E3E", textColor: "#2D3748" },
-            { id: "ocean_blue.pptx",         name: "Ocean Blue",     badge: "Light",  bg: "#EFF6FF", surface: "#DBEAFE", accent: "#2563EB", text: "#1E3A8A", titleColor: "#2563EB", textColor: "#1E3A8A" },
-            { id: "forest_green.pptx",       name: "Forest Green",   badge: "Nature", bg: "#F0FDF4", surface: "#DCFCE7", accent: "#15803D", text: "#14532D", titleColor: "#15803D", textColor: "#14532D" },
-            { id: "royal_purple.pptx",       name: "Royal Purple",   badge: "Dark",   bg: "#1E1B4B", surface: "#312E81", accent: "#818CF8", text: "#EDE9FE", titleColor: "#818CF8", textColor: "#EDE9FE" },
-            { id: "golden_amber.pptx",       name: "Golden Amber",   badge: "Warm",   bg: "#FFFBEB", surface: "#FEF3C7", accent: "#D97706", text: "#451A03", titleColor: "#D97706", textColor: "#451A03" },
-            { id: "charcoal_mono.pptx",      name: "Charcoal Mono",  badge: "Dark",   bg: "#18181B", surface: "#27272A", accent: "#A1A1AA", text: "#FAFAFA", titleColor: "#A1A1AA", textColor: "#FAFAFA" },
-            { id: "rose_blush.pptx",         name: "Rose Blush",     badge: "Soft",   bg: "#FFF1F2", surface: "#FFE4E6", accent: "#E11D48", text: "#1F2937", titleColor: "#E11D48", textColor: "#1F2937" },
-            { id: "navy_slate.pptx",         name: "Navy Slate",     badge: "Dark",   bg: "#0F172A", surface: "#1E293B", accent: "#38BDF8", text: "#F0F9FF", titleColor: "#38BDF8", textColor: "#F0F9FF" },
-            { id: "olive_sage.pptx",         name: "Olive Sage",     badge: "Earth",  bg: "#FAFAF9", surface: "#F5F5F4", accent: "#65A30D", text: "#1A2E05", titleColor: "#65A30D", textColor: "#1A2E05" },
-            { id: "nebula_glow.pptx",        name: "Nebula Glow",    badge: "Special",bg: "#0D0D15", surface: "#1A1A2E", accent: "#7AA2F7", text: "#E0E0FB", titleColor: "#7AA2F7", textColor: "#E0E0FB" },
-            { id: "retrowave_neon.pptx",     name: "Retrowave Neon", badge: "Special",bg: "#240046", surface: "#3C096C", accent: "#FF00FF", text: "#FFFFFF", titleColor: "#FF00FF", textColor: "#FFFFFF" },
-            { id: "facet.pptx",              name: "Facet",          badge: "Official",bg: "#FFFFFF", surface: "#F0F8F8", accent: "#008B8B", text: "#2F4F4F", titleColor: "#008B8B", textColor: "#2F4F4F" },
-            { id: "gallery.pptx",            name: "Gallery",        badge: "Official",bg: "#FFFFFF", surface: "#FDF5E6", accent: "#A52A2A", text: "#3E2723", titleColor: "#A52A2A", textColor: "#3E2723" },
-            { id: "integral.pptx",           name: "Integral",       badge: "Official",bg: "#FFFFFF", surface: "#F5FFFA", accent: "#2E8B57", text: "#1B5E20", titleColor: "#2E8B57", textColor: "#1B5E20" },
-            { id: "ion.pptx",                name: "Ion",            badge: "Official",bg: "#FFFFFF", surface: "#F8F8FF", accent: "#6A5ACD", text: "#1A237E", titleColor: "#6A5ACD", textColor: "#1A237E" },
-            { id: "berlin.pptx",             name: "Berlin",         badge: "Official",bg: "#FFFFFF", surface: "#FFF8DC", accent: "#D2691E", text: "#3E2723", titleColor: "#D2691E", textColor: "#3E2723" },
+            { id: "professional_blue.pptx", name: "Professional", badge: "Light", bg: "#FFFFFF", surface: "#EBF3FF", accent: "#1565C0", text: "#212121", titleColor: "#1565C0", textColor: "#212121" },
+            { id: "executive_dark.pptx", name: "Executive Dark", badge: "Dark", bg: "#1A1A2E", surface: "#16213E", accent: "#E94560", text: "#EAEAEA", titleColor: "#E94560", textColor: "#EAEAEA" },
+            { id: "teal_modern.pptx", name: "Teal Modern", badge: "Light", bg: "#F0FDFA", surface: "#CCFBF1", accent: "#0D9488", text: "#134E4A", titleColor: "#0D9488", textColor: "#134E4A" },
+            { id: "sunset_coral.pptx", name: "Sunset Coral", badge: "Warm", bg: "#FFF5F5", surface: "#FED7D7", accent: "#E53E3E", text: "#2D3748", titleColor: "#E53E3E", textColor: "#2D3748" },
+            { id: "ocean_blue.pptx", name: "Ocean Blue", badge: "Light", bg: "#EFF6FF", surface: "#DBEAFE", accent: "#2563EB", text: "#1E3A8A", titleColor: "#2563EB", textColor: "#1E3A8A" },
+            { id: "forest_green.pptx", name: "Forest Green", badge: "Nature", bg: "#F0FDF4", surface: "#DCFCE7", accent: "#15803D", text: "#14532D", titleColor: "#15803D", textColor: "#14532D" },
+            { id: "royal_purple.pptx", name: "Royal Purple", badge: "Dark", bg: "#1E1B4B", surface: "#312E81", accent: "#818CF8", text: "#EDE9FE", titleColor: "#818CF8", textColor: "#EDE9FE" },
+            { id: "golden_amber.pptx", name: "Golden Amber", badge: "Warm", bg: "#FFFBEB", surface: "#FEF3C7", accent: "#D97706", text: "#451A03", titleColor: "#D97706", textColor: "#451A03" },
+            { id: "charcoal_mono.pptx", name: "Charcoal Mono", badge: "Dark", bg: "#18181B", surface: "#27272A", accent: "#A1A1AA", text: "#FAFAFA", titleColor: "#A1A1AA", textColor: "#FAFAFA" },
+            { id: "rose_blush.pptx", name: "Rose Blush", badge: "Soft", bg: "#FFF1F2", surface: "#FFE4E6", accent: "#E11D48", text: "#1F2937", titleColor: "#E11D48", textColor: "#1F2937" },
+            { id: "navy_slate.pptx", name: "Navy Slate", badge: "Dark", bg: "#0F172A", surface: "#1E293B", accent: "#38BDF8", text: "#F0F9FF", titleColor: "#38BDF8", textColor: "#F0F9FF" },
+            { id: "olive_sage.pptx", name: "Olive Sage", badge: "Earth", bg: "#FAFAF9", surface: "#F5F5F4", accent: "#65A30D", text: "#1A2E05", titleColor: "#65A30D", textColor: "#1A2E05" },
+            { id: "nebula_glow.pptx", name: "Nebula Glow", badge: "Special", bg: "#0D0D15", surface: "#1A1A2E", accent: "#7AA2F7", text: "#E0E0FB", titleColor: "#7AA2F7", textColor: "#E0E0FB" },
+            { id: "retrowave_neon.pptx", name: "Retrowave Neon", badge: "Special", bg: "#240046", surface: "#3C096C", accent: "#FF00FF", text: "#FFFFFF", titleColor: "#FF00FF", textColor: "#FFFFFF" },
+            { id: "facet.pptx", name: "Facet", badge: "Official", bg: "#FFFFFF", surface: "#F0F8F8", accent: "#008B8B", text: "#2F4F4F", titleColor: "#008B8B", textColor: "#2F4F4F" },
+            { id: "gallery.pptx", name: "Gallery", badge: "Official", bg: "#FFFFFF", surface: "#FDF5E6", accent: "#A52A2A", text: "#3E2723", titleColor: "#A52A2A", textColor: "#3E2723" },
+            { id: "integral.pptx", name: "Integral", badge: "Official", bg: "#FFFFFF", surface: "#F5FFFA", accent: "#2E8B57", text: "#1B5E20", titleColor: "#2E8B57", textColor: "#1B5E20" },
+            { id: "ion.pptx", name: "Ion", badge: "Official", bg: "#FFFFFF", surface: "#F8F8FF", accent: "#6A5ACD", text: "#1A237E", titleColor: "#6A5ACD", textColor: "#1A237E" },
+            { id: "berlin.pptx", name: "Berlin", badge: "Official", bg: "#FFFFFF", surface: "#FFF8DC", accent: "#D2691E", text: "#3E2723", titleColor: "#D2691E", textColor: "#3E2723" },
         ];
 
         function initThemes() {
@@ -750,7 +801,7 @@
                     card.classList.add('selected');
                 };
                 // Badge background: dark themes get accent, light themes get low-opacity accent
-                const isDark = ['Dark','Mono'].includes(t.badge);
+                const isDark = ['Dark', 'Mono'].includes(t.badge);
                 const badgeBg = isDark ? t.accent + '33' : t.accent + '22';
                 card.innerHTML = `
                     <div class="theme-preview" style="background:${t.bg}">
@@ -782,25 +833,25 @@
             document.getElementById('urlGroup').style.display = type === 'url' ? 'block' : 'none';
             document.getElementById('textGroup').style.display = type === 'text' ? 'block' : 'none';
             document.getElementById('pptxGroup').style.display = type === 'pptx_import' ? 'block' : 'none';
-            
+
             // If import, we might not need a topic initially
             document.getElementById('topicInputContainer').style.display = type === 'pptx_import' ? 'none' : 'block';
         }
 
         async function importExistingPPT() {
             const file = document.getElementById('pptxFile').files[0];
-            if(!file) { alert("Please select a file"); return; }
-            
+            if (!file) { alert("Please select a file"); return; }
+
             const formData = new FormData();
             formData.append('file', file);
-            
+
             const statusBox = document.getElementById('status');
             statusBox.style.display = 'block';
             const stEl = document.getElementById('statusText'); if (stEl) stEl.innerText = 'Parsing presentation...';
-            
+
             try {
                 const response = await fetch('/import_ppt', { method: 'POST', body: formData });
-                if(response.ok) {
+                if (response.ok) {
                     const data = await response.json();
                     generatedSlidesData = data;
 
@@ -818,7 +869,7 @@
                 } else {
                     const err = await response.json(); alert(err.error);
                 }
-            } catch(e) { alert("Import failed: " + e); }
+            } catch (e) { alert("Import failed: " + e); }
             finally { statusBox.style.display = 'none'; }
         }
 
@@ -829,7 +880,15 @@
         function updateProgress() {
             const fill = document.getElementById('progressFill');
             fill.style.width = ((currentStep - 1) / (totalSteps - 1)) * 100 + '%';
-            
+
+            // Expand container for live update step (16:9 visibility)
+            const mainContainer = document.querySelector('.container');
+            if (currentStep === 4) {
+                mainContainer.classList.add('expanded');
+            } else {
+                mainContainer.classList.remove('expanded');
+            }
+
             document.querySelectorAll('.step-dot').forEach(dot => {
                 const step = parseInt(dot.getAttribute('data-step'));
                 dot.classList.remove('active', 'completed');
@@ -900,17 +959,17 @@
             btn.disabled = true;
             statusBox.style.display = 'block';
             resultsDiv.innerHTML = '';
-            
+
             // Animation for steps
             const lSteps = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
             let activeIdx = 0;
-            
+
             const interval = setInterval(() => {
                 lSteps.forEach(s => s.classList.remove('active'));
-                if(activeIdx > 0) lSteps[activeIdx-1].classList.add('done');
-                if(activeIdx < 3) lSteps[activeIdx].classList.add('active');
+                if (activeIdx > 0) lSteps[activeIdx - 1].classList.add('done');
+                if (activeIdx < 3) lSteps[activeIdx].classList.add('active');
                 activeIdx++;
-                if(activeIdx > 3) clearInterval(interval);
+                if (activeIdx > 3) clearInterval(interval);
             }, 3000);
 
             try {
@@ -919,7 +978,7 @@
                     const data = await response.json();
                     clearInterval(interval);
                     lSteps.forEach(s => s.classList.add('done'));
-                    
+
                     resultsDiv.innerHTML = `
                         <div class="success-box">
                             <i class="fa-solid fa-circle-check success-icon"></i>
@@ -953,7 +1012,7 @@
             formData.append('include_images', document.getElementById('includeImages').checked);
             formData.append('image_mode', document.querySelector('input[name="imageMode"]:checked').value);
             formData.append('source_type', document.getElementById('sourceType').value);
-            
+
             if (formData.get('source_type') === 'pdf') {
                 formData.append('file', document.getElementById('pdfFile').files[0]);
             } else if (formData.get('source_type') === 'url') {
@@ -983,8 +1042,8 @@
 
         function renderSlidePreviews() {
             const container = document.getElementById('slidePreviewContainer');
-            const themeId   = document.getElementById('templateChoice').value;
-            const theme     = themes.find(t => t.id === themeId) || themes[0];
+            const themeId = document.getElementById('templateChoice').value;
+            const theme = themes.find(t => t.id === themeId) || themes[0];
 
             // Show/hide import banner & back button
             const bannerEl = document.getElementById('importModeBanner');
@@ -997,24 +1056,25 @@
             const slides = generatedSlidesData.slides || [];
             slides.forEach((slide, idx) => {
                 // In import mode use a neutral dark card (can't preview original design)
-                const cardBg     = isImportMode ? '#1e293b' : theme.bg;
+                const cardBg = isImportMode ? '#1e293b' : theme.bg;
                 const cardBorder = isImportMode ? '#38bdf8' : theme.accent;
-                const cardText   = isImportMode ? '#f0f9ff' : theme.text;
+                const cardText = isImportMode ? '#f0f9ff' : theme.text;
                 const titleColor = isImportMode ? '#38bdf8' : theme.titleColor;
 
                 const slideEl = document.createElement('div');
                 slideEl.className = 'mini-slide';
                 slideEl.style.cssText = `
                     background: ${cardBg};
-                    border: 2px solid ${cardBorder};
+                    border: 1px solid rgba(255,255,255,0.1);
                     border-radius: 12px;
-                    padding: 20px;
+                    padding: 30px 40px 30px 50px;
                     position: relative;
-                    min-height: 200px;
+                    width: 100%;
                     color: ${cardText};
                     font-family: inherit;
                     overflow: hidden;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                    margin-bottom: 20px;
                 `;
 
                 // Slide number badge
@@ -1032,17 +1092,17 @@
                 const header = document.createElement('h3');
                 header.contentEditable = !isImportMode;
                 header.innerText = slide.heading;
-                header.style.cssText = `color:${titleColor}; margin-bottom:10px; padding-right:50px; font-size:1.05rem;`;
+                header.style.cssText = `color:${titleColor}; margin-bottom:15px; padding-right:80px; font-size:1.6rem; line-height:1.2; word-wrap: break-word;`;
                 header.onblur = (e) => { slide.heading = e.target.innerText; };
                 slideEl.appendChild(header);
 
                 // Shape inventory tags (import mode)
                 if (isImportMode && slide.shapes) {
                     const tags = [];
-                    if (slide.shapes.images   > 0) tags.push(`📷 ${slide.shapes.images} image${slide.shapes.images>1?'s':''}`);
-                    if (slide.shapes.charts   > 0) tags.push(`📊 ${slide.shapes.charts} chart${slide.shapes.charts>1?'s':''}`);
-                    if (slide.shapes.tables   > 0) tags.push(`📋 ${slide.shapes.tables} table${slide.shapes.tables>1?'s':''}`);
-                    if (slide.shapes.smartarts> 0) tags.push(`🔷 ${slide.shapes.smartarts} diagram${slide.shapes.smartarts>1?'s':''}`);
+                    if (slide.shapes.images > 0) tags.push(`📷 ${slide.shapes.images} image${slide.shapes.images > 1 ? 's' : ''}`);
+                    if (slide.shapes.charts > 0) tags.push(`📊 ${slide.shapes.charts} chart${slide.shapes.charts > 1 ? 's' : ''}`);
+                    if (slide.shapes.tables > 0) tags.push(`📋 ${slide.shapes.tables} table${slide.shapes.tables > 1 ? 's' : ''}`);
+                    if (slide.shapes.smartarts > 0) tags.push(`🔷 ${slide.shapes.smartarts} diagram${slide.shapes.smartarts > 1 ? 's' : ''}`);
 
                     if (tags.length > 0) {
                         const tagRow = document.createElement('div');
@@ -1059,13 +1119,14 @@
 
                 // Content bullets
                 const list = document.createElement('ul');
-                list.style.cssText = `margin-left: 20px;`;
+                list.style.cssText = `margin-left: 20px; margin-top: 0; padding-left: 4px;`;
                 (slide.content || []).forEach((item, bIdx) => {
                     const li = document.createElement('li');
                     li.contentEditable = !isImportMode;
                     li.innerText = item.text;
-                    li.style.fontSize = item.level === 0 ? '1rem' : '0.85rem';
-                    li.style.marginBottom = '5px';
+                    li.style.fontSize = item.level === 0 ? '1.05rem' : '0.9rem';
+                    li.style.marginBottom = '6px';
+                    li.style.lineHeight = '1.35';
                     li.onblur = (e) => { item.text = e.target.innerText; };
                     list.appendChild(li);
                 });
@@ -1080,11 +1141,18 @@
                         if (slide.image_url) {
                             img.src = slide.image_url;
                         } else {
-                            const safeQuery = encodeURIComponent(slide.image_search_query);
-                            img.src = `https://loremflickr.com/400/250/${safeQuery}`;
+                            // Use picsum for a random photo; fallback to placehold.co which always works
+                            img.src = `https://picsum.photos/seed/${encodeURIComponent(slide.image_search_query || idx)}/600/300`;
                         }
-                        img.style.cssText = `width: 100%; height: auto; min-height: 100px; display: block; filter: brightness(0.9);`;
-                        img.onerror = () => { img.src = "https://images.unsplash.com/photo-1542314831068cd1dbfeeb?fit=crop&w=400&q=80"; };
+                        img.style.cssText = `width: 100%; height: 200px; object-fit: cover; display: block; border-radius: 6px 6px 0 0;`;
+                        let onerrorFired = false;
+                        img.onerror = () => {
+                            if (!onerrorFired) {
+                                onerrorFired = true;
+                                const label = encodeURIComponent(slide.image_search_query || 'Image');
+                                img.src = `https://placehold.co/600x300/1e293b/94a3b8?text=${label}`;
+                            }
+                        };
                         imgContainer.appendChild(img);
                         const imgInfo = document.createElement('div');
                         imgInfo.style.cssText = `background: ${theme.surface}; color: ${theme.accent}; padding: 8px 12px; font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;`;
@@ -1145,7 +1213,7 @@
                 formData.append('body_font_color', document.getElementById('selectedTextColor').value);
 
                 const response = await fetch('/generate_final', { method: 'POST', body: formData });
-                const result   = await response.json();
+                const result = await response.json();
                 if (response.ok) {
                     const a = document.createElement('a');
                     a.href = result.downloadUrl;
@@ -1176,15 +1244,15 @@
                     if (!currentSessionId) { alert('Session lost. Please re-upload your file.'); return; }
 
                     const formData = new FormData();
-                    formData.append('session_id',      currentSessionId);
-                    formData.append('instruction',     instruction);
-                    formData.append('current_slides',  JSON.stringify(generatedSlidesData.slides || []));
+                    formData.append('session_id', currentSessionId);
+                    formData.append('instruction', instruction);
+                    formData.append('current_slides', JSON.stringify(generatedSlidesData.slides || []));
 
                     const response = await fetch('/update_ppt_live', { method: 'POST', body: formData });
                     if (response.ok) {
                         const result = await response.json();
                         generatedSlidesData.slides = result.slides;
-                        lastPatchedDownloadUrl     = result.downloadUrl;
+                        lastPatchedDownloadUrl = result.downloadUrl;
                         renderSlidePreviews();
                         document.getElementById('aiUpdateInstruction').value = '';
 
@@ -1201,7 +1269,7 @@
 
                 // ── NORMAL MODE: Use /update_slides (AI text regeneration) ──────────
                 const formData = new FormData();
-                formData.append('slides',      JSON.stringify(generatedSlidesData.slides));
+                formData.append('slides', JSON.stringify(generatedSlidesData.slides));
                 formData.append('instruction', instruction);
 
                 const response = await fetch('/update_slides', { method: 'POST', body: formData });
@@ -1218,7 +1286,7 @@
                 alert('Connection failed: ' + e);
             } finally {
                 btn.innerHTML = originalText;
-                btn.disabled  = false;
+                btn.disabled = false;
             }
         }
 
@@ -1226,9 +1294,9 @@
             const slide = generatedSlidesData.slides[slideIdx];
             const newQuery = prompt("What should the agent search for?", slide.image_search_query);
             if (!newQuery) return;
-            
+
             slide.image_search_query = newQuery;
-            
+
             // Re-render immediately with a "loading" state maybe, or just call update
             const instruction = `Update the image for slide "${slide.heading}" with search query: "${newQuery}"`;
             document.getElementById('aiUpdateInstruction').value = instruction;
