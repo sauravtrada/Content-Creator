@@ -1067,14 +1067,20 @@
                     background: ${cardBg};
                     border: 1px solid rgba(255,255,255,0.1);
                     border-radius: 12px;
-                    padding: 30px 40px 30px 50px;
+                    padding: 40px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
                     position: relative;
                     width: 100%;
+                    min-height: 480px;
+                    aspect-ratio: 16 / 9;
                     color: ${cardText};
                     font-family: inherit;
                     overflow: hidden;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
                     margin-bottom: 20px;
+                    transition: transform 0.3s ease;
                 `;
 
                 // Slide number badge
@@ -1140,9 +1146,11 @@
                         const img = document.createElement('img');
                         if (slide.image_url) {
                             img.src = slide.image_url;
+                        } else if (slide.image_search_query) {
+                            // Only use Picsum if we have a query but the agent couldn't find a real URL yet
+                            img.src = `https://picsum.photos/seed/${encodeURIComponent(slide.image_search_query)}/600/300`;
                         } else {
-                            // Use picsum for a random photo; fallback to placehold.co which always works
-                            img.src = `https://picsum.photos/seed/${encodeURIComponent(slide.image_search_query || idx)}/600/300`;
+                            img.src = `https://placehold.co/600x300/1e293b/94a3b8?text=Visual+Content`;
                         }
                         img.style.cssText = `width: 100%; height: 200px; object-fit: cover; display: block; border-radius: 6px 6px 0 0;`;
                         let onerrorFired = false;

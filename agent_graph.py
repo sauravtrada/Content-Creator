@@ -396,9 +396,9 @@ def image_searcher_node(state: AgentState):
     if not state.get("include_images") or not slides:
         return {"slides": slides}
 
-    from services.image_service import fetch_image_for_query
+    from services.image_service import search_image_url
 
-    print(f"[IMAGE AGENT] Searching images for {len(slides)} slides (parallel)...")
+    print(f"[IMAGE AGENT] Finding real image URLs for {len(slides)} slides (parallel)...")
 
     # Collect queries
     queries: Dict[int, str] = {}
@@ -407,7 +407,8 @@ def image_searcher_node(state: AgentState):
         url   = slide.get("image_url")
 
         if url:
-            queries[i] = url  # Already have a URL — just verify/download
+            # We already have a specific URL — keep it
+            queries[i] = url
         elif query:
             queries[i] = query
         elif state.get("image_mode") == "auto":
@@ -419,33 +420,30 @@ def image_searcher_node(state: AgentState):
     if not queries:
         return {"slides": slides}
 
-    # Parallel fetch — no time.sleep()
-    results: Dict[int, str] = {}
+    # Parallel search — find real URLs to provide to the frontend
+    found_urls: Dict[int, str] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_idx = {
-            executor.submit(fetch_image_for_query, q): idx
+            executor.submit(search_image_url, q): idx
             for idx, q in queries.items()
         }
         for future in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[future]
             try:
-                stream = future.result()
-                if stream:
-                    # Store the query/url so ppt_utils can fetch it again
-                    results[idx] = queries[idx]
+                url = future.result()
+                if url:
+                    found_urls[idx] = url
             except Exception as e:
-                print(f"[IMAGE AGENT] Error fetching slide {idx}: {e}")
+                print(f"[IMAGE AGENT] Error searching slide {idx}: {e}")
 
-    # Attach confirmed image sources back to slides
+    # Attach confirmed URLs back to slides
     updated_slides = []
     for i, slide in enumerate(slides):
-        if i in results:
+        if i in found_urls:
             slide = dict(slide)
-            if results[i].startswith(("http://", "https://")):
-                slide["image_url"] = results[i]
-            else:
-                slide["image_search_query"] = results[i]
-            # Re-enforce layout after image confirmation
+            # We successfully found a specific image URL
+            slide["image_url"] = found_urls[i]
+            # Ensure the layout is 'split' if we have an image
             slide["layout"] = "split"
         updated_slides.append(slide)
 

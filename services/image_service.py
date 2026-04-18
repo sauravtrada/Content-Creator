@@ -26,8 +26,9 @@ load_dotenv(override=True)
 _UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY") or os.getenv("Image_Key") or ""
 _PEXELS_KEY   = os.getenv("PEXELS_API_KEY", "")
 
-# ── In-memory cache: query/url → BytesIO (seeked to 0) ───────────────────────
-_image_cache: dict = {}
+# ── In-memory cache ───────────────────────────────────────────────────────────
+_url_cache: dict = {}      # query -> url
+_image_cache: dict = {}    # url/query -> BytesIO (seeked to 0)
 
 # ── Request helpers ───────────────────────────────────────────────────────────
 
@@ -49,123 +50,95 @@ def _download_url(url: str, timeout: int = 12) -> BytesIO | None:
     return None
 
 
-# ── Tier 1: Unsplash ──────────────────────────────────────────────────────────
+# ── Search Tiers ──────────────────────────────────────────────────────────────
 
-def _fetch_unsplash(query: str) -> BytesIO | None:
-    if not _UNSPLASH_KEY:
-        return None
+def _search_unsplash_url(query: str) -> str | None:
+    if not _UNSPLASH_KEY: return None
     try:
-        api_url = (
-            "https://api.unsplash.com/search/photos"
-            f"?query={urllib.parse.quote(query)}&per_page=1&orientation=landscape"
-        )
-        resp = requests.get(
-            api_url,
-            headers={"Authorization": f"Client-ID {_UNSPLASH_KEY}"},
-            timeout=10
-        )
+        api_url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query)}&per_page=1&orientation=landscape"
+        resp = requests.get(api_url, headers={"Authorization": f"Client-ID {_UNSPLASH_KEY}"}, timeout=10)
         if resp.status_code == 200:
             results = resp.json().get("results", [])
-            if results:
-                img_url = results[0]["urls"]["regular"]
-                print(f"[ImageService] Unsplash hit for '{query}': {img_url[:60]}...")
-                return _download_url(img_url)
-        else:
-            print(f"[ImageService] Unsplash API error {resp.status_code} for '{query}'")
-    except Exception as e:
-        print(f"[ImageService] Unsplash exception for '{query}': {e}")
+            if results: return results[0]["urls"]["regular"]
+    except Exception as e: print(f"[ImageService] Unsplash search error: {e}")
     return None
 
-
-# ── Tier 2: Pexels ────────────────────────────────────────────────────────────
-
-def _fetch_pexels(query: str) -> BytesIO | None:
-    if not _PEXELS_KEY:
-        return None
+def _search_pexels_url(query: str) -> str | None:
+    if not _PEXELS_KEY: return None
     try:
-        api_url = (
-            "https://api.pexels.com/v1/search"
-            f"?query={urllib.parse.quote(query)}&per_page=1&orientation=landscape"
-        )
-        resp = requests.get(
-            api_url,
-            headers={"Authorization": _PEXELS_KEY},
-            timeout=10
-        )
+        api_url = f"https://api.pexels.com/v1/search?query={urllib.parse.quote(query)}&per_page=1&orientation=landscape"
+        resp = requests.get(api_url, headers={"Authorization": _PEXELS_KEY}, timeout=10)
         if resp.status_code == 200:
             photos = resp.json().get("photos", [])
-            if photos:
-                img_url = photos[0]["src"]["large"]
-                print(f"[ImageService] Pexels hit for '{query}': {img_url[:60]}...")
-                return _download_url(img_url)
-        else:
-            print(f"[ImageService] Pexels API error {resp.status_code} for '{query}'")
-    except Exception as e:
-        print(f"[ImageService] Pexels exception for '{query}': {e}")
+            if photos: return photos[0]["src"]["large"]
+    except Exception as e: print(f"[ImageService] Pexels search error: {e}")
     return None
 
-
-# ── Tier 3: DuckDuckGo (no key, last resort) ─────────────────────────────────
-
-def _fetch_duckduckgo(query: str) -> BytesIO | None:
+def _search_duckduckgo_url(query: str) -> str | None:
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.images(query, max_results=3))
-        if results:
-            img_url = results[0].get("image", "")
-            if img_url:
-                print(f"[ImageService] DuckDuckGo hit for '{query}': {img_url[:60]}...")
-                return _download_url(img_url, timeout=8)
-    except Exception as e:
-        print(f"[ImageService] DuckDuckGo exception for '{query}': {e}")
+        if results: return results[0].get("image")
+    except Exception as e: print(f"[ImageService] DDG search error: {e}")
     return None
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def search_image_url(query: str) -> str | None:
+    """Search for a relevant image URL using tiered providers."""
+    if not query: return None
+    
+    clean_query = query.strip().lower()
+    if clean_query in _url_cache:
+        return _url_cache[clean_query]
+
+    # Tiered search
+    url = _search_unsplash_url(query)
+    if not url: url = _search_pexels_url(query)
+    if not url: url = _search_duckduckgo_url(query)
+
+    if url:
+        _url_cache[clean_query] = url
+    return url
+
 def fetch_image_for_query(query_or_url: str) -> BytesIO | None:
     """
     Given a search query string OR a direct image URL, return a BytesIO image
-    stream positioned at 0, or None if all tiers fail.
-
-    Results are cached so repeated calls with the same input are free.
-    Never raises — always returns BytesIO or None.
+    stream positioned at 0.
     """
-    if not query_or_url:
-        return None
+    if not query_or_url: return None
 
+    # Check image cache first
     cache_key = query_or_url.strip().lower()
     if cache_key in _image_cache:
         buf = _image_cache[cache_key]
         buf.seek(0)
         return buf
 
-    result: BytesIO | None = None
-
+    # 1. Determine the URL
     is_url = query_or_url.startswith(("http://", "https://"))
+    url = query_or_url if is_url else search_image_url(query_or_url)
 
-    if is_url:
-        # Direct URL — skip search APIs
-        result = _download_url(query_or_url)
-    else:
-        # Search tiers: Unsplash → Pexels → DuckDuckGo
-        result = _fetch_unsplash(query_or_url)
-        if result is None:
-            result = _fetch_pexels(query_or_url)
-        if result is None:
-            result = _fetch_duckduckgo(query_or_url)
+    if not url:
+        return None
 
+    # 2. Check if we have the image for THIS specific URL cached
+    if url in _image_cache:
+        buf = _image_cache[url]
+        buf.seek(0)
+        return buf
+
+    # 3. Download
+    result = _download_url(url)
     if result:
         result.seek(0)
-        _image_cache[cache_key] = result
-
-    if result is None:
-        print(f"[ImageService] All tiers failed for '{query_or_url}' — slide will have no image.")
-
+        _image_cache[url] = result
+    
     return result
 
 
 def clear_cache():
-    """Clear the in-memory image cache (useful between requests in long-running servers)."""
+    _url_cache.clear()
     _image_cache.clear()
