@@ -588,12 +588,12 @@
                 <div id="sourceDetails">
                     <!-- Dynamic inputs go here -->
                     <div id="pdfGroup" style="display: none;">
-                        <label class="label">Select PDF Document</label>
-                        <input type="file" id="pdfFile" accept="application/pdf">
+                        <label class="label">Primary & Supporting PDF Documents (Select multiple)</label>
+                        <input type="file" id="pdfFile" accept="application/pdf" multiple>
                     </div>
                     <div id="urlGroup" style="display: none;">
-                        <label class="label">Reference URL</label>
-                        <input type="url" id="urlInput" placeholder="https://example.com/article">
+                        <label class="label">Reference URLs (One per line)</label>
+                        <textarea id="urlInput" placeholder="https://example.com/article1&#10;https://example.com/article2" rows="3"></textarea>
                     </div>
                     <div id="textGroup" style="display: none;">
                         <label class="label">Paste Reference Content</label>
@@ -945,7 +945,10 @@
             formData.append('body_font_color', document.getElementById('selectedTextColor').value);
 
             if (formData.get('source_type') === 'pdf') {
-                formData.append('file', document.getElementById('pdfFile').files[0]);
+                const files = document.getElementById('pdfFile').files;
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('file', files[i]);
+                }
             } else if (formData.get('source_type') === 'url') {
                 formData.append('source_url', document.getElementById('urlInput').value);
             } else if (formData.get('source_type') === 'text') {
@@ -1014,7 +1017,10 @@
             formData.append('source_type', document.getElementById('sourceType').value);
 
             if (formData.get('source_type') === 'pdf') {
-                formData.append('file', document.getElementById('pdfFile').files[0]);
+                const files = document.getElementById('pdfFile').files;
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('file', files[i]);
+                }
             } else if (formData.get('source_type') === 'url') {
                 formData.append('source_url', document.getElementById('urlInput').value);
             } else if (formData.get('source_type') === 'text') {

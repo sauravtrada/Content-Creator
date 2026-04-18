@@ -8,31 +8,45 @@ from document_loader import load_document
 # Use the highly efficient 'all-MiniLM-L6-v2' model for our CPU
 _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-def ingest_document(source: str, source_type: str) -> FAISS:
+def ingest_document(sources: list[str] | str, source_type: str) -> FAISS:
     """
-    Loads, chunks, and embeds a document into a local FAISS vector store.
-    Returns the FAISS object.
+    Loads, chunks, and embeds documents from one or more sources into a 
+    single local FAISS vector store.
+    sources: A list of filepaths/URLs, or a single path/URL/string.
     """
-    print(f"Loading document from {source_type}...")
-    docs = load_document(source, source_type)
+    if isinstance(sources, str):
+        sources = [sources]
+
+    all_docs = []
+    print(f"Loading {len(sources)} documents from {source_type}...")
     
+    for idx, src in enumerate(sources):
+        try:
+            print(f"[{idx+1}/{len(sources)}] Processing: {src[:60]}")
+            docs = load_document(src, source_type)
+            all_docs.extend(docs)
+        except Exception as e:
+            print(f"Warning: Failed to load source {src}: {e}")
+
+    if not all_docs:
+        raise ValueError("No documents were successfully loaded from the provided sources.")
+
     # Text Chunking Strategy
-    print("Chunking document...")
+    print(f"Chunking {len(all_docs)} loaded documents...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=1200,      # Slightly larger chunks for multi-doc context
+        chunk_overlap=240,
         length_function=len
     )
-    chunks = text_splitter.split_documents(docs)
+    chunks = text_splitter.split_documents(all_docs)
     
     if not chunks:
-        raise ValueError("Document yielded 0 text chunks.")
+        raise ValueError("Document aggregation yielded 0 text chunks.")
         
     print(f"Creating FAISS index with {len(chunks)} chunks using all-MiniLM-L6-v2...")
-    # FAISS will compute embeddings for all chunks here
     vectorstore = FAISS.from_documents(chunks, _embeddings)
     
-    print("FAISS index created successfully.")
+    print("FAISS index created successfully with combined knowledge.")
     return vectorstore
 
 def format_docs(docs):

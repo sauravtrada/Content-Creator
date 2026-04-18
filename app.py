@@ -77,30 +77,42 @@ def generate_content_only():
 
     try:
         rag_store = None
-        # Handle PDF/URL/Text ingestion (same as in generate_ppt)
+        # Handle PDF/URL/Text ingestion (multi-source supported)
         if source_type == 'pdf':
-            if 'file' not in request.files:
-                return jsonify({"error": "No PDF file uploaded"}), 400
-            file = request.files['file']
-            if file.filename == '':
-                return jsonify({"error": "No file selected"}), 400
+            files = request.files.getlist('file')
+            if not files or all(f.filename == '' for f in files):
+                return jsonify({"error": "No PDF files uploaded"}), 400
             
-            temp_path = os.path.join(tempfile.gettempdir(), os.urandom(8).hex() + "_" + file.filename)
-            file.save(temp_path)
-            try: 
-                rag_store = ingest_document(source=temp_path, source_type='pdf')
-            finally: 
-                if os.path.exists(temp_path): os.remove(temp_path)
+            temp_paths = []
+            for file in files:
+                if not file.filename: continue
+                tp = os.path.join(tempfile.gettempdir(), os.urandom(8).hex() + "_" + file.filename)
+                file.save(tp)
+                temp_paths.append(tp)
+            
+            try:
+                rag_store = ingest_document(sources=temp_paths, source_type='pdf')
+            finally:
+                for tp in temp_paths:
+                    if os.path.exists(tp): os.remove(tp)
+
         elif source_type == 'url':
-            source_url = request.form.get("source_url")
-            if not source_url:
+            source_url_raw = request.form.get("source_url", "")
+            if not source_url_raw:
                 return jsonify({"error": "URL is required"}), 400
-            rag_store = ingest_document(source=source_url, source_type='url')
+            
+            # Split by newlines, strip, and filter empty strings
+            urls = [u.strip() for u in source_url_raw.split('\n') if u.strip()]
+            if not urls:
+                return jsonify({"error": "No valid URLs provided"}), 400
+                
+            rag_store = ingest_document(sources=urls, source_type='url')
+
         elif source_type == 'text':
             source_text = request.form.get("source_text")
             if not source_text:
                 return jsonify({"error": "Raw text is required"}), 400
-            rag_store = ingest_document(source=source_text, source_type='text')
+            rag_store = ingest_document(sources=source_text, source_type='text')
 
         initial_state = {
             "topic": topic,
